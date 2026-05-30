@@ -7,6 +7,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      injectRegister: 'auto',
       manifest: {
         name: 'AshaKiran',
         short_name: 'AshaKiran',
@@ -20,11 +21,18 @@ export default defineConfig({
         ]
       },
       workbox: {
-        runtimeCaching: [{
-          urlPattern: ({ url }) => url.pathname.startsWith('/api/'),
-          handler: 'NetworkFirst',
-          options: { cacheName: 'api-cache', networkTimeoutSeconds: 5 }
-        }]
+        globPatterns: ['**/*.{js,css,html,ico,png,jpg,jpeg,svg,webmanifest}'],
+        runtimeCaching: [
+          {
+            urlPattern: ({ url }) => url.pathname.startsWith('/api/'),
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'api-cache',
+              networkTimeoutSeconds: 5,
+              expiration: { maxEntries: 100, maxAgeSeconds: 24 * 3600 }
+            }
+          }
+        ]
       }
     })
   ],
@@ -33,6 +41,22 @@ export default defineConfig({
       '/api':             'http://localhost:5000',
       '/health':          'http://localhost:5000',
       '/nearby-clinics':  'http://localhost:5000',
+    }
+  },
+  build: {
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('react') || id.includes('react-router')) return 'vendor-react';
+            if (id.includes('lucide-react')) return 'vendor-icons';
+            if (id.includes('xlsx')) return 'vendor-xlsx';
+            if (id.includes('dexie')) return 'vendor-db';
+            return 'vendor-helpers';
+          }
+        }
+      }
     }
   }
 });
