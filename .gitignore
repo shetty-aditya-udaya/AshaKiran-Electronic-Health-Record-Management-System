@@ -1,0 +1,40 @@
+# Root .gitignore for AshaKiran monorepo
+
+# Environment files — NEVER commit
+.env
+.env.*
+!.env.example
+backend/.env
+frontend/.env
+frontend/.env.local
+frontend/.env.production
+
+# Node
+node_modules/
+frontend/node_modules/
+frontend/dist/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+backend/venv/
+
+# Logs
+*.log
+backend/logs/
+backend/backend_error.log
+
+# SSL / certs
+backend/ca.pem
+
+# Dev artifacts
+backend/instance/
+backend/uploads/
+
+# IDE
+.vscode/
+.idea/
+*.DS_Store

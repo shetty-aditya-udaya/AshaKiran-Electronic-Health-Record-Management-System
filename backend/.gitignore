@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# Environment — NEVER commit credentials
+.env
+.env.*
+!.env.example
+
+# Virtualenv
+venv/
+env/
+.venv/
+
+# Logs
+*.log
+logs/
+
+# DB
+*.db
+*.sqlite3
+
+# SSL certs in project root (use secrets manager in production)
+ca.pem
+
+# Dev scripts (not for production repo)
+debug_models.py
+check_*.py
+list_*.py
+search_*.py
+test_*.py
+migrate_*.py
+fix_*.py
+rename_*.py
+
+# IDE
+.vscode/
+.idea/
