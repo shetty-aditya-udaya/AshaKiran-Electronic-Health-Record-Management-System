@@ -39,6 +39,33 @@ def create_app():
 
     db.init_app(app)
 
+    # ── Database Diagnostics & Handshake ─────────────────────────────────────────
+    with app.app_context():
+        try:
+            uri = app.config.get("SQLALCHEMY_DATABASE_URI", "")
+            from sqlalchemy.engine.url import make_url
+            parsed_url = make_url(uri)
+            dialect = parsed_url.drivername
+            host = parsed_url.host or "local"
+            db_name = parsed_url.database or "default"
+            
+            # Execute active database handshake
+            with db.engine.connect() as conn:
+                conn.execute(db.text("SELECT 1"))
+            
+            if "sqlite" in dialect:
+                diag_msg = f"DATABASE DIAGNOSTICS WARNING: Remote database host unavailable. Falling back to local SQLite at {db_name}."
+            else:
+                diag_msg = f"DATABASE DIAGNOSTICS: Connected to Aiven MySQL successfully! Dialect: {dialect} | Host: {host} | Database: {db_name}"
+            
+            app.logger.warning(diag_msg)
+            print(diag_msg)
+            
+        except Exception as err:
+            err_msg = f"DATABASE DIAGNOSTICS CRITICAL ERROR: Database handshake failed! Details: {err}"
+            app.logger.error(err_msg)
+            print(err_msg)
+
     # ── CORS (manual — flask-cors callable support not available) ────────────
     @app.after_request
     def add_cors_headers(response):

@@ -5,37 +5,43 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class Config:
-    # Aiven MySQL Connection details
-    DB_USER = os.getenv("DB_USER", "avnadmin")
-    DB_PASSWORD = os.getenv("DB_PASSWORD", "")
-    DB_HOST = os.getenv("DB_HOST", "localhost")
-    DB_PORT = os.getenv("DB_PORT", "24154")
-    DB_NAME = os.getenv("DB_NAME", "defaultdb")
-    
-    # Path to ca.pem (in backend root)
-    CA_PEM_PATH = os.path.join(os.path.abspath(os.path.dirname(__file__)), "ca.pem")
+    # Managed Database URI Resolution Logic
+    _db_url = os.getenv("DATABASE_URL")
+    _CA_PEM_PATH = os.path.join(os.path.abspath(os.path.dirname(__file__)), "ca.pem")
 
-    # SQLAlchemy URI with SSL configuration
-    _mysql_uri = (
-        f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-        f"?ssl_ca={CA_PEM_PATH}"
-    )
+    if not _db_url:
+        db_user = os.getenv("DB_USER")
+        db_pass = os.getenv("DB_PASSWORD")
+        db_host = os.getenv("DB_HOST")
+        db_name = os.getenv("DB_NAME", "defaultdb")
+        db_port = os.getenv("DB_PORT", "24154")
+        
+        # Determine if remote MySQL is fully configured
+        if db_host and db_host != "localhost" and db_pass:
+            _db_url = (
+                f"mysql+pymysql://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}"
+                f"?ssl_ca={_CA_PEM_PATH}"
+            )
+        else:
+            # Clean development fallback to local SQLite
+            _instance_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "instance")
+            os.makedirs(_instance_dir, exist_ok=True)
+            _db_url = f"sqlite:///{os.path.join(_instance_dir, 'ashakiran.db')}"
+
+    SQLALCHEMY_DATABASE_URI = _db_url
     
-    # Fallback to local SQLite for development if MySQL connection is problematic
-    # Ensure SQLALCHEMY_DATABASE_URI uses the MySQL URI unless DATABASE_URL is set
-    SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL", _mysql_uri)
-    
+    # Advanced Concurrency Connection Pooling Tuning
     SQLALCHEMY_ENGINE_OPTIONS = {
-        "pool_size": 5,
-        "max_overflow": 10,
-        "pool_recycle": 1800,      # recycle connections every 30 min (Aiven drops idle after ~1h)
-        "pool_timeout": 10,        # fail fast instead of hanging
-        "pool_pre_ping": True,     # test connection before use
+        "pool_size": 15,
+        "max_overflow": 25,
+        "pool_recycle": 900,       # Recycle connection every 15 min to prevent managed DB drops
+        "pool_timeout": 5,         # Avoid thread blockage
+        "pool_pre_ping": True,     # Auto-verify connection before query execution
         "connect_args": {
             "ssl": {
-                "ca": CA_PEM_PATH
+                "ca": _CA_PEM_PATH
             },
-            "connect_timeout": 10, # TCP connect timeout
+            "connect_timeout": 5
         }
     } if "mysql" in SQLALCHEMY_DATABASE_URI else {}
     
