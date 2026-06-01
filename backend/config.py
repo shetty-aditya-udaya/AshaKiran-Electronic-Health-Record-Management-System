@@ -9,7 +9,11 @@ class Config:
     _db_url = os.getenv("DATABASE_URL")
     _CA_PEM_PATH = os.path.join(os.path.abspath(os.path.dirname(__file__)), "ca.pem")
 
-    if not _db_url:
+    if _db_url:
+        # Standardize dialect mapping to mysql+pymysql for Railway compatibility
+        if _db_url.startswith("mysql://"):
+            _db_url = _db_url.replace("mysql://", "mysql+pymysql://", 1)
+    else:
         db_user = os.getenv("DB_USER")
         db_pass = os.getenv("DB_PASSWORD")
         db_host = os.getenv("DB_HOST")

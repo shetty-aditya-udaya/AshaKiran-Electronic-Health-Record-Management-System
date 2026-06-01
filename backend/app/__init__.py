@@ -53,10 +53,13 @@ def create_app():
             with db.engine.connect() as conn:
                 conn.execute(db.text("SELECT 1"))
             
+            ssl_enabled = "mysql" in dialect
+            ssl_state = "Enabled (ca.pem)" if ssl_enabled else "Disabled/Not Applicable for SQLite"
+
             if "sqlite" in dialect:
-                diag_msg = f"DATABASE DIAGNOSTICS WARNING: Remote database host unavailable. Falling back to local SQLite at {db_name}."
+                diag_msg = f"DATABASE DIAGNOSTICS WARNING: Remote database host unavailable. Falling back to local SQLite at {db_name}. SSL State: {ssl_state}"
             else:
-                diag_msg = f"DATABASE DIAGNOSTICS: Connected to Aiven MySQL successfully! Dialect: {dialect} | Host: {host} | Database: {db_name}"
+                diag_msg = f"DATABASE DIAGNOSTICS: Connected to Aiven MySQL successfully! Dialect: {dialect} | Host: {host} | Database: {db_name} | SSL State: {ssl_state}"
             
             app.logger.warning(diag_msg)
             print(diag_msg)

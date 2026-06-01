@@ -1,3 +1,4 @@
+import os
 from app import create_app, db
 
 app = create_app()
@@ -13,4 +14,7 @@ if __name__ == "__main__":
             user = User(name="Priya Devi", email="priya@asha.in", password=hashed, village="Gopalpur")
             db.session.add(user)
             db.session.commit()
-    app.run(debug=True, port=5000)
+    
+    port = int(os.getenv("PORT", 5000))
+    app.run(debug=os.getenv("FLASK_DEBUG", "false").lower() == "true", host="0.0.0.0", port=port)
+
