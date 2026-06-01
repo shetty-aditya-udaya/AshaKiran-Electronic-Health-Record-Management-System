@@ -19,9 +19,9 @@ logging.getLogger().addHandler(_handler)
 log = logging.getLogger(__name__)
 
 # ── Allowed CORS origins ───────────────────────────────────────────────────────
-# In production, set ALLOWED_ORIGINS=https://yourdomain.com
+# In production, set ALLOWED_ORIGINS=https://yourdomain.com or CORS_ORIGINS=https://yourdomain.com
 # In development, this defaults to localhost.
-_RAW_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173")
+_RAW_ORIGINS = os.getenv("CORS_ORIGINS") or os.getenv("ALLOWED_ORIGINS") or "http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173"
 _ALLOWED_ORIGINS = {o.strip() for o in _RAW_ORIGINS.split(",") if o.strip()}
 
 def _is_allowed_origin(origin: str) -> bool:
@@ -55,6 +55,8 @@ def create_app():
             
             ssl_enabled = "mysql" in dialect
             ssl_state = "Enabled (ca.pem)" if ssl_enabled else "Disabled/Not Applicable for SQLite"
+            flask_env = os.getenv("FLASK_ENV", "development")
+            debug_mode = app.config.get("DEBUG", False)
 
             if "sqlite" in dialect:
                 diag_msg = f"DATABASE DIAGNOSTICS WARNING: Remote database host unavailable. Falling back to local SQLite at {db_name}. SSL State: {ssl_state}"
@@ -63,6 +65,10 @@ def create_app():
             
             app.logger.warning(diag_msg)
             print(diag_msg)
+
+            boot_msg = f"BACKEND BOOT SUCCESS: AshaKiran running in {flask_env.upper()} mode | Debug: {debug_mode} | CORS: {_RAW_ORIGINS}"
+            app.logger.warning(boot_msg)
+            print(boot_msg)
             
         except Exception as err:
             err_msg = f"DATABASE DIAGNOSTICS CRITICAL ERROR: Database handshake failed! Details: {err}"

@@ -61,7 +61,7 @@ def login():
             "user_id": user.id,
             "role": user.role,
             "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=Config.JWT_EXPIRY_HOURS)
-        }, Config.SECRET_KEY, algorithm="HS256")
+        }, Config.JWT_SECRET_KEY, algorithm="HS256")
         
         return jsonify({
             "token": token,
@@ -91,7 +91,7 @@ def refresh():
         
         try:
             # Decode token, ignoring expiration so we can read the payload of the expired token
-            data = jwt.decode(token, Config.SECRET_KEY, algorithms=["HS256"], options={"verify_exp": False})
+            data = jwt.decode(token, Config.JWT_SECRET_KEY, algorithms=["HS256"], options={"verify_exp": False})
             
             # Security: enforce a strict refresh grace period limit (7 days / 168 hours)
             # to prevent indefinite reuse of ancient or stolen expired tokens.
@@ -113,7 +113,7 @@ def refresh():
                 "user_id": user.id,
                 "role": user.role,
                 "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=Config.JWT_EXPIRY_HOURS)
-            }, Config.SECRET_KEY, algorithm="HS256")
+            }, Config.JWT_SECRET_KEY, algorithm="HS256")
             
             return jsonify({
                 "token": new_token,

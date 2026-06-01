@@ -18,7 +18,7 @@ def require_auth(f):
         token = parts[1]
         
         try:
-            data = jwt.decode(token, Config.SECRET_KEY, algorithms=["HS256"])
+            data = jwt.decode(token, Config.JWT_SECRET_KEY, algorithms=["HS256"])
             current_user = User.query.get(data["user_id"])
             if not current_user:
                 return jsonify({"error": "User no longer exists"}), 401

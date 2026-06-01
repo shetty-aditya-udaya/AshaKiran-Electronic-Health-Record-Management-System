@@ -56,4 +56,10 @@ class Config:
             raise RuntimeError("CRITICAL: SECRET_KEY environment variable is required in production!")
         _secret = "dev-secret-key"
     SECRET_KEY = _secret
+    
+    _jwt_secret = os.getenv("JWT_SECRET_KEY")
+    if not _jwt_secret:
+        _jwt_secret = _secret
+    JWT_SECRET_KEY = _jwt_secret
+
     JWT_EXPIRY_HOURS = 24
