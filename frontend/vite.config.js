@@ -49,10 +49,14 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (id.includes('node_modules')) {
-            if (id.includes('react') || id.includes('react-router')) return 'vendor-react';
+            // OS-independent regex matching core react and react-router packages only
+            const isReactCore = id.match(/[\\/]node_modules[\\/](react|react-dom|react-router|react-router-dom)[\\/]/);
+            if (isReactCore) {
+              return 'vendor-react-core';
+            }
             if (id.includes('lucide-react')) return 'vendor-icons';
             if (id.includes('xlsx')) return 'vendor-xlsx';
-            if (id.includes('dexie')) return 'vendor-db';
+            if (id.includes('dexie') || id.includes('idb')) return 'vendor-db';
             return 'vendor-helpers';
           }
         }
