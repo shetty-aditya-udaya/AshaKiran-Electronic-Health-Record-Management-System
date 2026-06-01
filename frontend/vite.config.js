@@ -44,26 +44,6 @@ export default defineConfig({
     }
   },
   build: {
-    chunkSizeWarningLimit: 600,
-    rollupOptions: {
-      output: {
-        manualChunks(id) {
-          if (id.includes('node_modules')) {
-            // Isolate heavy libraries that are independent of React's core runtime
-            if (id.includes('xlsx')) {
-              return 'vendor-xlsx';
-            }
-            if (id.includes('leaflet') || id.includes('leaflet-defaulticon-compatibility')) {
-              return 'vendor-maps';
-            }
-            if (id.includes('dexie') || id.includes('idb')) {
-              return 'vendor-db';
-            }
-            // All other core packages (React, React-DOM, Routers, and helper internals)
-            // remain together to ensure absolute runtime stability.
-          }
-        }
-      }
-    }
+    chunkSizeWarningLimit: 2000
   }
 });
