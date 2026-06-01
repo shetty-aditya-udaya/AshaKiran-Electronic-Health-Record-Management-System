@@ -22,12 +22,23 @@ log = logging.getLogger(__name__)
 # In production, set ALLOWED_ORIGINS=https://yourdomain.com or CORS_ORIGINS=https://yourdomain.com
 # In development, this defaults to localhost.
 _RAW_ORIGINS = os.getenv("CORS_ORIGINS") or os.getenv("ALLOWED_ORIGINS") or "http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173"
-_ALLOWED_ORIGINS = {o.strip() for o in _RAW_ORIGINS.split(",") if o.strip()}
+_ALLOWED_ORIGINS = {o.strip().rstrip('/') for o in _RAW_ORIGINS.split(",") if o.strip()}
 
 def _is_allowed_origin(origin: str) -> bool:
     if not origin:
         return False
-    return origin in _ALLOWED_ORIGINS
+    # Strip trailing slash just in case
+    clean_origin = origin.rstrip('/')
+    
+    if clean_origin in _ALLOWED_ORIGINS:
+        return True
+        
+    # In development mode, also allow local developer ports
+    if os.getenv("FLASK_ENV") != "production":
+        if clean_origin.startswith("http://localhost:") or clean_origin.startswith("http://127.0.0.1:"):
+            return True
+            
+    return False
 
 
 def create_app():
@@ -79,7 +90,7 @@ def create_app():
     @app.after_request
     def add_cors_headers(response):
         origin = request.headers.get("Origin", "")
-        if _is_allowed_origin(origin) or origin.startswith("http://localhost:") or origin.startswith("http://127.0.0.1:"):
+        if _is_allowed_origin(origin):
             response.headers["Access-Control-Allow-Origin"]      = origin
             response.headers["Access-Control-Allow-Credentials"] = "true"
             response.headers["Access-Control-Allow-Headers"]     = "Content-Type, Authorization"
@@ -90,7 +101,7 @@ def create_app():
     def handle_options():
         if request.method == "OPTIONS":
             origin = request.headers.get("Origin", "")
-            if _is_allowed_origin(origin) or origin.startswith("http://localhost:") or origin.startswith("http://127.0.0.1:"):
+            if _is_allowed_origin(origin):
                 resp = make_response("", 204)
                 resp.headers["Access-Control-Allow-Origin"]      = origin
                 resp.headers["Access-Control-Allow-Credentials"] = "true"
