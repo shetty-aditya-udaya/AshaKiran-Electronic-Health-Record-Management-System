@@ -49,15 +49,18 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (id.includes('node_modules')) {
-            // OS-independent regex matching core react and react-router packages only
-            const isReactCore = id.match(/[\\/]node_modules[\\/](react|react-dom|react-router|react-router-dom)[\\/]/);
-            if (isReactCore) {
-              return 'vendor-react-core';
+            // Isolate heavy libraries that are independent of React's core runtime
+            if (id.includes('xlsx')) {
+              return 'vendor-xlsx';
             }
-            if (id.includes('lucide-react')) return 'vendor-icons';
-            if (id.includes('xlsx')) return 'vendor-xlsx';
-            if (id.includes('dexie') || id.includes('idb')) return 'vendor-db';
-            return 'vendor-helpers';
+            if (id.includes('leaflet') || id.includes('leaflet-defaulticon-compatibility')) {
+              return 'vendor-maps';
+            }
+            if (id.includes('dexie') || id.includes('idb')) {
+              return 'vendor-db';
+            }
+            // All other core packages (React, React-DOM, Routers, and helper internals)
+            // remain together to ensure absolute runtime stability.
           }
         }
       }
