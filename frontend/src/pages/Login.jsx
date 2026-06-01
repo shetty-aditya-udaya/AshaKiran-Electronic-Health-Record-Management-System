@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useTranslation } from 'react-i18next';
+import { API_BASE_URL } from '../config/api';
 
 export default function Login({ onLogin }) {
   const { t } = useTranslation();
@@ -14,7 +15,7 @@ export default function Login({ onLogin }) {
     e.preventDefault();
     setLoading(true);
     try {
-      const resp = await fetch('/api/login', {
+      const resp = await fetch(`${API_BASE_URL}/api/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })

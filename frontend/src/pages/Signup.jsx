@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useTranslation } from 'react-i18next';
+import { API_BASE_URL } from '../config/api';
 
 export default function Signup() {
   const { t } = useTranslation();
@@ -14,7 +15,7 @@ export default function Signup() {
     setLoading(true);
     
     try {
-      const resp = await fetch('/api/register', {
+      const resp = await fetch(`${API_BASE_URL}/api/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)

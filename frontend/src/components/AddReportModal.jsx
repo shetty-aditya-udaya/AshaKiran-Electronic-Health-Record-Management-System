@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { X, Camera, Upload, Check, FileText, Activity, Pill, Syringe } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useTranslation } from 'react-i18next';
+import { API_BASE_URL } from '../config/api';
 
 export default function AddReportModal({ isOpen, onClose, patientId, onSuccess }) {
   const { t } = useTranslation();
@@ -29,7 +30,7 @@ export default function AddReportModal({ isOpen, onClose, patientId, onSuccess }
 
     const loadId = toast.loading(t('uploadingImage', "Uploading image..."));
     try {
-      const resp = await fetch('/api/reports/upload', {
+      const resp = await fetch(`${API_BASE_URL}/api/reports/upload`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${currentToken}` },
         body
@@ -72,7 +73,7 @@ export default function AddReportModal({ isOpen, onClose, patientId, onSuccess }
       if (navigator.onLine) {
         try {
           const token = localStorage.getItem('token');
-          const resp  = await fetch('/api/reports/add', {
+          const resp  = await fetch(`${API_BASE_URL}/api/reports/add`, {
             method:  'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
             body:    JSON.stringify({ ...formData, patient_id: patientId, local_id }),
