@@ -34,12 +34,12 @@ class Config:
 
     SQLALCHEMY_DATABASE_URI = _db_url
     
-    # Advanced Concurrency Connection Pooling Tuning
+    # Advanced Concurrency Connection Pooling Tuning (Optimised for Low-RAM Containers)
     SQLALCHEMY_ENGINE_OPTIONS = {
-        "pool_size": 15,
-        "max_overflow": 25,
+        "pool_size": 5,
+        "max_overflow": 5,
         "pool_recycle": 900,       # Recycle connection every 15 min to prevent managed DB drops
-        "pool_timeout": 5,         # Avoid thread blockage
+        "pool_timeout": 10,        # Safe timeout for low-RAM concurrency
         "pool_pre_ping": True,     # Auto-verify connection before query execution
         "connect_args": {
             "ssl": {

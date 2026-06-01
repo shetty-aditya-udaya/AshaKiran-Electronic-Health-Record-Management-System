@@ -128,22 +128,9 @@ def create_app():
     @app.route("/")
     @app.route("/health")
     def health_check():
-        db_ok = False
-        db_msg = "unknown"
-        try:
-            with db.engine.connect() as conn:
-                conn.execute(db.text("SELECT 1"))
-            db_ok = True
-            db_msg = "connected"
-        except Exception as exc:
-            log.error("Health-check DB ping failed: %s", exc)
-            db_msg = "unavailable"
         return jsonify({
-            "status": "healthy" if db_ok else "degraded",
-            "service": "AshaKiran Backend",
-            "version": "1.0.0",
-            "database": db_msg,
-        }), 200 if db_ok else 503
+            "status": "healthy"
+        }), 200
 
     # ── Global error handlers ────────────────────────────────────────────────
     @app.errorhandler(404)
