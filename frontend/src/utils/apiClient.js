@@ -2,7 +2,7 @@
  * AshaKiran – Centralized API Client
  * Features: timeout, 3-retry exponential backoff, auth injection, structured errors
  */
-import { API_BASE_URL } from '../config';
+import { API_BASE_URL } from '../config/api';
 
 const TIMEOUT_MS       = 12000;  // 12 s per attempt
 const MAX_RETRIES      = 3;
@@ -115,7 +115,7 @@ export async function attemptSilentRefresh() {
       const oldToken = localStorage.getItem('token');
       if (!oldToken) return false;
 
-      const res = await fetch(`${API_BASE_URL}/refresh`, {
+      const res = await fetch(`${API_BASE_URL}/api/refresh`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -173,7 +173,7 @@ async function request(method, path, { body, headers: extra = {}, raw = false } 
     }
   } catch (err) {
     // Intercept 401 expired tokens (but not login or refresh requests themselves)
-    if (err instanceof ApiError && err.status === 401 && path !== '/login' && path !== '/refresh') {
+    if (err instanceof ApiError && err.status === 401 && path !== '/api/login' && path !== '/api/refresh') {
       console.warn(`[API] 401 Unauthorized for ${path}. Attempting silent refresh...`);
       try {
         const refreshed = await attemptSilentRefresh();

@@ -28,15 +28,15 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://ashakiran-backend.up.railway.app/api/:path*"
+      "destination": "https://ashakiran-electronic-health-record-management-sy-production.up.railway.app/api/:path*"
     },
     {
       "source": "/health",
-      "destination": "https://ashakiran-backend.up.railway.app/health"
+      "destination": "https://ashakiran-electronic-health-record-management-sy-production.up.railway.app/health"
     },
     {
       "source": "/uploads/:path*",
-      "destination": "https://ashakiran-backend.up.railway.app/api/uploads/:path*"
+      "destination": "https://ashakiran-electronic-health-record-management-sy-production.up.railway.app/api/uploads/:path*"
     },
     {
       "source": "/((?!assets/|icons/|manifest.webmanifest|sw.js|favicon.ico|registerSW.js).*)",
