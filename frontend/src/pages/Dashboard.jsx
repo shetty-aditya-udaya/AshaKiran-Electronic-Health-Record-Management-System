@@ -1,29 +1,183 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { API_BASE_URL } from '../config';
-import { MapPin } from 'lucide-react';
 import { getLocalDashboardStats } from '../lib/db';
 import { useTranslation } from 'react-i18next';
 import { useConnection } from '../context/ConnectionContext';
+import {
+  LayoutDashboard, Users, Bell, FolderHeart, Activity,
+  TrendingUp, TrendingDown, AlertTriangle, CheckCircle2,
+  ChevronRight, ArrowUpRight, Calendar, MapPin,
+  Heart, ShieldCheck, Clock, Wifi, WifiOff, RefreshCw,
+  Stethoscope, ClipboardList, UserPlus, Syringe,
+} from 'lucide-react';
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Helpers ───────────────────────────────────────────────────────────────────
 
-function greeting(t) {
-  const options = {
+function getDateStr() {
+  return new Date().toLocaleDateString(undefined, {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-  };
-  const str = new Date().toLocaleDateString(undefined, options);
-  return str;
+  });
+}
+
+function getTimeGreeting() {
+  const h = new Date().getHours();
+  if (h < 12) return 'Good morning';
+  if (h < 17) return 'Good afternoon';
+  return 'Good evening';
 }
 
 function pctOf(val, total) {
   return total > 0 ? Math.min(100, Math.max(0, Math.round((val / total) * 100))) : 0;
 }
 
-// ─── Skeleton Loader ──────────────────────────────────────────────────────────
+// ─── Donut Chart ─────────────────────────────────────────────────────────────
 
-function Skeleton({ className }) {
-  return <div className={`bg-slate-100 dark:bg-slate-200 rounded-2xl animate-pulse ${className}`} />;
+function DonutChart({ segments, size = 140, strokeWidth = 18 }) {
+  const r = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * r;
+  const cx = size / 2;
+  const cy = size / 2;
+
+  let offset = 0;
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="rotate-[-90deg]">
+      {/* Background track */}
+      <circle
+        cx={cx} cy={cy} r={r}
+        fill="none"
+        stroke="#F1F5F9"
+        strokeWidth={strokeWidth}
+      />
+      {segments.map((seg, i) => {
+        const dash = (seg.pct / 100) * circumference;
+        const el = (
+          <circle
+            key={i}
+            cx={cx} cy={cy} r={r}
+            fill="none"
+            stroke={seg.color}
+            strokeWidth={strokeWidth}
+            strokeDasharray={`${dash} ${circumference}`}
+            strokeDashoffset={-offset}
+            strokeLinecap="round"
+            style={{ transition: 'stroke-dasharray 1s cubic-bezier(0.4,0,0.2,1)' }}
+          />
+        );
+        offset += dash;
+        return el;
+      })}
+    </svg>
+  );
+}
+
+// ─── Skeleton ────────────────────────────────────────────────────────────────
+
+function Skeleton({ className = '' }) {
+  return (
+    <div
+      className={`rounded-xl animate-pulse ${className}`}
+      style={{ background: 'linear-gradient(90deg,#f0f0f0 25%,#e4e4e4 50%,#f0f0f0 75%)', backgroundSize: '200% 100%' }}
+    />
+  );
+}
+
+// ─── Stat Card ───────────────────────────────────────────────────────────────
+
+function StatCard({ label, value, icon: Icon, iconBg, trend, trendLabel, accent, onClick, sublabel }) {
+  return (
+    <button
+      onClick={onClick}
+      className="group relative w-full text-left p-5 rounded-2xl bg-white border border-slate-100 hover:border-slate-200 hover:shadow-md transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2"
+      style={{ boxShadow: '0 1px 4px rgba(15,23,42,0.04)', '--tw-ring-color': accent }}
+    >
+      <div className="flex items-start justify-between mb-4">
+        <div
+          className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+          style={{ background: iconBg }}
+        >
+          <Icon size={18} style={{ color: accent }} />
+        </div>
+        <span
+          className="text-xs font-semibold px-2 py-0.5 rounded-full flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
+          style={{ background: iconBg, color: accent }}
+        >
+          <ArrowUpRight size={11} /> View
+        </span>
+      </div>
+
+      <p className="text-2xl font-bold text-slate-900 mb-0.5 tabular-nums">
+        {String(value).padStart(2, '0')}
+      </p>
+      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{label}</p>
+
+      {sublabel && (
+        <p className="text-[11px] text-slate-400 mt-1">{sublabel}</p>
+      )}
+
+      {/* Thin accent bottom bar */}
+      <div className="absolute bottom-0 left-4 right-4 h-[2px] rounded-full opacity-0 group-hover:opacity-100 transition-opacity" style={{ background: accent }} />
+    </button>
+  );
+}
+
+// ─── Alert Row ───────────────────────────────────────────────────────────────
+
+function AlertRow({ icon: Icon, iconBg, iconColor, title, subtitle, accentBar, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      className="group w-full flex items-center gap-3.5 p-3.5 rounded-xl bg-white border border-slate-100 hover:border-slate-200 hover:shadow-sm transition-all duration-150 text-left"
+    >
+      <div
+        className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+        style={{ background: iconBg, borderLeft: `3px solid ${iconColor}` }}
+      >
+        <Icon size={15} style={{ color: iconColor }} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold text-slate-800 truncate">{title}</p>
+        <p className="text-[11px] text-slate-400 mt-0.5 truncate">{subtitle}</p>
+      </div>
+      <ChevronRight size={14} className="text-slate-300 group-hover:text-slate-500 flex-shrink-0 group-hover:translate-x-0.5 transition-transform" />
+    </button>
+  );
+}
+
+// ─── Quick Action Button ──────────────────────────────────────────────────────
+
+function QuickActionBtn({ icon: Icon, label, accent, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      className="group flex flex-col items-center gap-2 p-4 rounded-xl bg-white border border-slate-100 hover:border-slate-200 hover:shadow-sm transition-all duration-150 w-full text-center"
+    >
+      <div
+        className="w-10 h-10 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform duration-200"
+        style={{ background: `${accent}15` }}
+      >
+        <Icon size={18} style={{ color: accent }} />
+      </div>
+      <span className="text-xs font-semibold text-slate-600 group-hover:text-slate-900 transition-colors leading-tight">{label}</span>
+    </button>
+  );
+}
+
+// ─── Connection Pill ─────────────────────────────────────────────────────────
+
+function ConnectionPill({ isOnline }) {
+  return (
+    <span
+      className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full ${
+        isOnline ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+      }`}
+    >
+      <span
+        className={`w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`}
+      />
+      {isOnline ? 'Live' : 'Offline'}
+    </span>
+  );
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -33,37 +187,40 @@ function Skeleton({ className }) {
 export default function Dashboard() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const [user, setUser] = useState(null);
   const { isServerReachable } = useConnection();
-  
+  const [user, setUser] = useState(null);
+
   useEffect(() => {
     setUser(JSON.parse(localStorage.getItem('user')) || null);
   }, []);
 
-  const [stats, setStats]     = useState({ totalPatients: 0, highRisk: 0, remindersCount: 0, visitsCompletedCount: 0 });
+  const [stats, setStats] = useState({
+    totalPatients: 0, highRisk: 0, remindersCount: 0, visitsCompletedCount: 0,
+  });
   const [loading, setLoading] = useState(true);
+  const [lastSync, setLastSync] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   const fetchStats = useCallback(async () => {
     try {
-      // 1. Load locally from IndexedDB first for instant UI response
       const localStats = await getLocalDashboardStats();
       setStats(localStats);
-      setLoading(false); // Stop loading since we have local data
+      setLoading(false);
 
-      // 2. Fetch fresh stats from backend in the background if online
       if (isServerReachable) {
         const token = localStorage.getItem('token');
-        const res   = await fetch(`${API_BASE_URL}/api/programmes/summary`, {
+        const res = await fetch(`${API_BASE_URL}/api/programmes/summary`, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
         if (res.ok) {
           const d = await res.json();
           setStats({
-            totalPatients:        d.totalPatients  || 0,
-            highRisk:             d.highRisk       || 0,
-            remindersCount:       d.remindersCount || 0,
+            totalPatients:        d.totalPatients        || 0,
+            highRisk:             d.highRisk             || 0,
+            remindersCount:       d.remindersCount       || 0,
             visitsCompletedCount: d.visitsCompletedCount || 0,
           });
+          setLastSync(new Date());
         }
       }
     } catch (err) {
@@ -75,429 +232,471 @@ export default function Dashboard() {
 
   useEffect(() => { fetchStats(); }, [fetchStats]);
 
-  // Re-fetch when local database writes occur
   useEffect(() => {
-    const handleUpdate = () => fetchStats();
-    window.addEventListener('local-data-written', handleUpdate);
-    window.addEventListener('visit-added', handleUpdate);
-    window.addEventListener('patient-added', handleUpdate);
+    const handle = () => fetchStats();
+    window.addEventListener('local-data-written', handle);
+    window.addEventListener('visit-added', handle);
+    window.addEventListener('patient-added', handle);
     return () => {
-      window.removeEventListener('local-data-written', handleUpdate);
-      window.removeEventListener('visit-added', handleUpdate);
-      window.removeEventListener('patient-added', handleUpdate);
+      window.removeEventListener('local-data-written', handle);
+      window.removeEventListener('visit-added', handle);
+      window.removeEventListener('patient-added', handle);
     };
   }, [fetchStats]);
 
-  const visitsDone  = stats.visitsCompletedCount || 0;
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await fetchStats();
+    setTimeout(() => setRefreshing(false), 600);
+  };
+
+  // Derived stats
   const stableCases = Math.max(0, stats.totalPatients - stats.highRisk);
+  const visitsDone  = stats.visitsCompletedCount || 0;
+  const stablePct   = pctOf(stableCases, stats.totalPatients);
+  const highRiskPct = pctOf(stats.highRisk, stats.totalPatients);
 
   const locationText = [
-    user?.village ? `${t('village', 'Village')}: ${user.village}` : null,
-    user?.district ? user.district : null
-  ].filter(Boolean).join(', ') || t('yourDistrict', 'Your District');
+    user?.village  ? user.village  : null,
+    user?.district ? user.district : null,
+  ].filter(Boolean).join(', ') || 'Your Area';
 
-  // ── Loading Skeleton ───────────────────────────────────────────────────────
+  const displayName = user?.name || 'ASHA Worker';
+
+  // Donut segments (stable = emerald, high risk = rose, visited = teal)
+  const totalForChart = Math.max(stats.totalPatients, 1);
+  const donutSegments = [
+    { pct: pctOf(stableCases, totalForChart), color: '#10B981' },
+    { pct: pctOf(stats.highRisk, totalForChart), color: '#F43F5E' },
+  ];
+
+  // ── Loading State ────────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="max-w-5xl mx-auto px-4 md:px-8 py-8 space-y-6">
-        <Skeleton className="h-16 w-72" />
-        <Skeleton className="h-56 w-full" />
-        <div className="grid grid-cols-3 gap-4">
-          {[1,2,3].map(i => <Skeleton key={i} className="h-36" />)}
+      <div className="max-w-7xl mx-auto px-4 md:px-8 py-6 space-y-5">
+        <div className="flex items-center justify-between">
+          <Skeleton className="h-12 w-64" />
+          <Skeleton className="h-8 w-20" />
         </div>
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-          <div className="lg:col-span-7 space-y-3">
-            <Skeleton className="h-16" /><Skeleton className="h-16" /><Skeleton className="h-16" />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {[1,2,3,4].map(i => <Skeleton key={i} className="h-32" />)}
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          <div className="lg:col-span-2 space-y-3">
+            {[1,2,3].map(i => <Skeleton key={i} className="h-16" />)}
           </div>
-          <div className="lg:col-span-5 space-y-3">
-            {[1,2,3,4].map(i => <Skeleton key={i} className="h-14" />)}
-          </div>
+          <Skeleton className="h-64" />
         </div>
       </div>
     );
   }
 
-  const GLASS_CARD_STYLE = {
-    background: 'rgba(255, 255, 255, 0.72)',
-    backdropFilter: 'blur(12px)',
-    WebkitBackdropFilter: 'blur(12px)',
-    border: '1px solid rgba(255, 255, 255, 0.55)',
-    boxShadow: '0 8px 32px 0 rgba(0, 109, 119, 0.03)',
-  };
-
   return (
-    <div 
-      className="min-h-screen pb-24 md:pb-8 relative overflow-hidden" 
-      style={{ 
-        backgroundImage: "url('/dashboard-bg.png')",
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-        backgroundAttachment: 'fixed',
-        backgroundRepeat: 'no-repeat',
-      }}
-    >
-      {/* Soft gradient wash overlay for perfect readability and soothing healthcare atmosphere */}
-      <div 
-        className="absolute inset-0 z-0 pointer-events-none"
-        style={{
-          background: 'linear-gradient(180deg, rgba(247, 249, 251, 0.45) 0%, rgba(247, 249, 251, 0.82) 100%)',
-          backdropFilter: 'blur(3px)',
-        }}
-      />
+    <div className="min-h-screen" style={{ background: '#F8FAFC' }}>
 
-      <main className="relative z-10 max-w-[1280px] mx-auto px-4 md:px-16 py-8 space-y-6">
-        
-        {/* ── Namaste Greeting Header ── */}
-        <header className="flex flex-col md:flex-row md:items-center justify-between pb-2">
+      {/* ── Main Content ── */}
+      <main className="max-w-7xl mx-auto px-4 md:px-8 pt-6 pb-28 md:pb-10 space-y-6">
+
+        {/* ── Header Row ── */}
+        <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400 mb-1">
-              {greeting(t)}
-            </p>
-            <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
-              {t('namasteGreeting', 'Namaste, {{name}} 👋', { name: user?.name || 'ASHA Worker' })}
-            </h1>
-            <div className="flex items-center gap-1.5 mt-1.5 text-slate-400">
-              <MapPin size={13} strokeWidth={2} />
-              <span className="text-xs font-medium text-slate-500">{locationText}</span>
+            <div className="flex items-center gap-2 mb-0.5">
+              <span className="text-xs font-semibold text-slate-400 uppercase tracking-widest">
+                {getDateStr()}
+              </span>
+              <ConnectionPill isOnline={isServerReachable} />
             </div>
+            <h1 className="text-2xl md:text-[28px] font-bold text-slate-900 tracking-tight">
+              {getTimeGreeting()}, {displayName} 👋
+            </h1>
+            {locationText !== 'Your Area' && (
+              <p className="flex items-center gap-1 text-xs text-slate-400 mt-1 font-medium">
+                <MapPin size={11} /> {locationText}
+              </p>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleRefresh}
+              className="p-2 rounded-lg border border-slate-200 text-slate-500 hover:text-slate-800 hover:bg-white hover:border-slate-300 transition-all"
+              title="Refresh data"
+            >
+              <RefreshCw size={15} className={refreshing ? 'animate-spin' : ''} />
+            </button>
+            <button
+              onClick={() => navigate('/patients/add')}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all hover:shadow-md active:scale-95"
+              style={{ background: 'linear-gradient(135deg, #0F766E, #0D9488)' }}
+            >
+              <UserPlus size={15} />
+              <span className="hidden sm:inline">Add Patient</span>
+            </button>
           </div>
         </header>
 
-        {/* Hero Section: Daily Targets */}
-        <section className="mb-8">
-          <div 
-            className="rounded-3xl p-6 sm:p-8 text-white relative overflow-hidden"
-            style={{
-              background: 'linear-gradient(135deg, #00535b 0%, #006d77 100%)',
-              boxShadow: '0 8px 24px rgba(0, 109, 119, 0.12)'
-            }}
-          >
-            {/* Soft decorative medical icon background */}
-            <div className="absolute top-0 right-0 p-4 sm:p-8 opacity-10 pointer-events-none">
-              <span className="material-symbols-outlined text-[100px] sm:text-[140px]" style={{ fontVariationSettings: "'FILL' 1" }}>
-                medical_services
+        {/* ── Four Stat Cards ── */}
+        <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="db-card-animate">
+          <StatCard
+            label="Total Patients"
+            value={stats.totalPatients}
+            icon={Users}
+            iconBg="#EFF8F7"
+            accent="#0F766E"
+            sublabel="Managed in registry"
+            onClick={() => navigate('/patients')}
+          />
+          </div>
+          <div className="db-card-animate">
+          <StatCard
+            label="Stable Cases"
+            value={stableCases}
+            icon={ShieldCheck}
+            iconBg="#F0FDF4"
+            accent="#16A34A"
+            sublabel={`${stablePct}% of total`}
+            onClick={() => navigate('/patients')}
+          />
+          </div>
+          <div className="db-card-animate">
+          <StatCard
+            label="High-Risk"
+            value={stats.highRisk}
+            icon={AlertTriangle}
+            iconBg="#FFF1F2"
+            accent="#F43F5E"
+            sublabel={stats.highRisk > 0 ? 'Needs immediate care' : 'All patients stable'}
+            onClick={() => navigate('/patients')}
+          />
+          </div>
+          <div className="db-card-animate">
+          <StatCard
+            label="Visits Done"
+            value={visitsDone}
+            icon={Activity}
+            iconBg="#EFF6FF"
+            accent="#2563EB"
+            sublabel="Completed visits"
+            onClick={() => navigate('/reminders')}
+          />
+          </div>
+        </section>
+
+        {/* ── Three-column Content Grid ── */}
+        <section className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+
+          {/* ── Col 1 + 2: Activity Feed + Patient Summary ── */}
+          <div className="lg:col-span-2 space-y-4">
+
+            {/* Activity & Alerts header */}
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-bold text-slate-700 uppercase tracking-widest">
+                Today's Activity
+              </h2>
+              <button
+                onClick={() => navigate('/reminders')}
+                className="text-xs font-semibold text-teal-700 hover:text-teal-900 flex items-center gap-1 transition-colors"
+              >
+                View schedule <ChevronRight size={13} />
+              </button>
+            </div>
+
+            {/* Alert rows */}
+            <div className="space-y-2.5">
+              {/* High-risk alert */}
+              {stats.highRisk > 0 ? (
+                <AlertRow
+                  icon={AlertTriangle}
+                  iconBg="#FFF1F2"
+                  iconColor="#F43F5E"
+                  title={`${stats.highRisk} High-Risk Patient${stats.highRisk > 1 ? 's' : ''} Need Attention`}
+                  subtitle="Immediate follow-up recommended"
+                  onClick={() => navigate('/patients')}
+                />
+              ) : (
+                <AlertRow
+                  icon={CheckCircle2}
+                  iconBg="#F0FDF4"
+                  iconColor="#16A34A"
+                  title="No Critical Alerts"
+                  subtitle="All high-risk patients are currently stable"
+                  onClick={() => navigate('/patients')}
+                />
+              )}
+
+              {/* Pending visits */}
+              {stats.remindersCount > 0 ? (
+                <AlertRow
+                  icon={Clock}
+                  iconBg="#FFFBEB"
+                  iconColor="#D97706"
+                  title={`${stats.remindersCount} Visit${stats.remindersCount > 1 ? 's' : ''} Pending`}
+                  subtitle="Scheduled checkups require updates today"
+                  onClick={() => navigate('/reminders')}
+                />
+              ) : (
+                <AlertRow
+                  icon={CheckCircle2}
+                  iconBg="#F0FDF4"
+                  iconColor="#16A34A"
+                  title="All Visits Completed"
+                  subtitle="You're fully up to date with today's schedule"
+                  onClick={() => navigate('/reminders')}
+                />
+              )}
+
+              {/* Total patients info */}
+              <AlertRow
+                icon={Users}
+                iconBg="#EFF8F7"
+                iconColor="#0F766E"
+                title={`${stats.totalPatients} Patients in Registry`}
+                subtitle="Secure offline records — encrypted & synced"
+                onClick={() => navigate('/patients')}
+              />
+            </div>
+
+            {/* ── Cloud Sync Card ── */}
+            <div
+              className="flex items-center justify-between p-4 rounded-2xl bg-white border border-slate-100"
+              style={{ boxShadow: '0 1px 4px rgba(15,23,42,0.04)' }}
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-teal-50 flex items-center justify-center">
+                  {isServerReachable
+                    ? <Wifi size={16} className="text-teal-700" />
+                    : <WifiOff size={16} className="text-amber-600" />
+                  }
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-slate-800">
+                    {isServerReachable ? 'Aiven Cloud Sync' : 'Offline Mode'}
+                  </p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    {isServerReachable
+                      ? lastSync ? `Last synced ${lastSync.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'All records encrypted & backed up'
+                      : 'Working with local data — will sync when online'
+                    }
+                  </p>
+                </div>
+              </div>
+              <span
+                className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full ${
+                  isServerReachable ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+                }`}
+              >
+                <span className={`w-1.5 h-1.5 rounded-full ${isServerReachable ? 'bg-emerald-500 animate-pulse' : 'bg-amber-400'}`} />
+                {isServerReachable ? 'Live' : 'Offline'}
               </span>
             </div>
-            
-            <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6 sm:gap-8">
-              <div className="space-y-4 max-w-xl">
-                <h2 className="text-2xl sm:text-3.5xl font-extrabold text-white leading-tight tracking-tight">
-                  {t('careTagline', 'Providing quality care to the community, one step at a time.')}
-                </h2>
-                <button 
-                  onClick={() => navigate('/reminders')}
-                  className="bg-white text-teal-800 font-bold text-xs sm:text-sm px-5 py-3 sm:px-6 sm:py-3.5 rounded-xl hover:bg-teal-50 hover:shadow-md transition-all active:scale-95 flex items-center gap-2 w-fit shadow-sm"
-                >
-                  {t('viewSchedule', "View Today's Schedule")}
-                  <span className="material-symbols-outlined text-sm sm:text-base">arrow_forward</span>
-                </button>
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4 w-full lg:w-auto">
-                <div className="bg-white/10 backdrop-blur-sm p-4 sm:p-5 rounded-2xl border border-white/20 flex flex-col justify-between">
-                  <p className="text-white/70 text-[10px] sm:text-xs font-bold uppercase tracking-wider mb-1">{t('completed', 'Completed')}</p>
-                  <div className="flex items-baseline gap-1.5 mt-1">
-                    <span className="text-2xl sm:text-3xl font-extrabold">{String(visitsDone).padStart(2, '0')}</span>
-                    <span className="text-white/60 text-[10px] sm:text-xs">{t('done', 'Done')}</span>
-                  </div>
-                </div>
-                <div className="bg-white/10 backdrop-blur-sm p-4 sm:p-5 rounded-2xl border border-white/20 flex flex-col justify-between">
-                  <p className="text-white/70 text-[10px] sm:text-xs font-bold uppercase tracking-wider mb-1">{t('pending', 'Pending')}</p>
-                  <div className="flex items-baseline gap-1.5 mt-1">
-                    <span className="text-2xl sm:text-3xl font-extrabold">{String(stats.remindersCount).padStart(2, '0')}</span>
-                    <span className="text-white/60 text-[10px] sm:text-xs">{t('action', 'Action')}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
 
-        {/* Patient Stats Grid */}
-        <section className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-          <div 
-            onClick={() => navigate('/patients')}
-            className="p-6 rounded-2xl border border-white/60 flex justify-between items-center group hover:border-primary hover:bg-white/80 transition-all cursor-pointer"
-            style={GLASS_CARD_STYLE}
-          >
-            <div>
-              <p className="font-semibold text-sm text-on-surface-variant mb-1">{t('totalPatients', 'Total Patients')}</p>
-              <h3 className="text-2xl font-bold text-on-surface">{String(stats.totalPatients).padStart(2, '0')}</h3>
-            </div>
-            <div className="text-right">
-              <span className="text-primary font-bold text-lg">100%</span>
-              <div className="w-12 h-1.5 bg-surface-container rounded-full mt-2">
-                <div className="bg-primary w-full h-full rounded-full transition-transform duration-300 group-hover:scale-x-110 origin-left"></div>
+            {/* ── Today's Schedule CTA ── */}
+            <button
+              onClick={() => navigate('/reminders')}
+              className="w-full flex items-center justify-between p-5 rounded-2xl border border-dashed border-teal-200 hover:border-teal-400 hover:bg-teal-50/50 transition-all group"
+              style={{ background: 'linear-gradient(135deg, #F0FDFA 0%, #ECFDF5 100%)' }}
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-teal-100 flex items-center justify-center">
+                  <Calendar size={18} className="text-teal-700" />
+                </div>
+                <div className="text-left">
+                  <p className="text-sm font-bold text-teal-900">View Today's Schedule</p>
+                  <p className="text-[11px] text-teal-600 mt-0.5">
+                    {stats.remindersCount > 0
+                      ? `${stats.remindersCount} pending • ${visitsDone} completed`
+                      : 'All visits completed for today'}
+                  </p>
+                </div>
               </div>
-            </div>
+              <ArrowUpRight size={18} className="text-teal-600 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+            </button>
           </div>
 
-          <div 
-            onClick={() => navigate('/patients')}
-            className="p-6 rounded-2xl border border-white/60 flex justify-between items-center group hover:border-secondary hover:bg-white/80 transition-all cursor-pointer"
-            style={GLASS_CARD_STYLE}
-          >
-            <div>
-              <p className="font-semibold text-sm text-on-surface-variant mb-1">{t('stableCases', 'Stable Cases')}</p>
-              <h3 className="text-2xl font-bold text-on-surface">{String(stableCases).padStart(2, '0')}</h3>
-            </div>
-            <div className="text-right">
-              <span className="text-secondary font-bold text-lg">{pctOf(stableCases, stats.totalPatients)}%</span>
-              <div className="w-12 h-1.5 bg-surface-container rounded-full mt-2">
-                <div 
-                  className="bg-secondary h-full rounded-full transition-transform duration-300 group-hover:scale-x-110 origin-left"
-                  style={{ width: `${pctOf(stableCases, stats.totalPatients)}%` }}
-                ></div>
-              </div>
-            </div>
-          </div>
+          {/* ── Col 3: Patient Breakdown Donut + Quick Actions ── */}
+          <div className="space-y-4">
 
-          <div 
-            onClick={() => navigate('/patients')}
-            className="p-6 rounded-2xl border border-white/60 flex justify-between items-center group hover:border-error hover:bg-white/80 transition-all cursor-pointer"
-            style={GLASS_CARD_STYLE}
-          >
-            <div>
-              <p className="font-semibold text-sm text-on-surface-variant mb-1">{t('highRiskCases', 'High-Risk Cases')}</p>
-              <h3 className="text-2xl font-bold text-on-surface">{String(stats.highRisk).padStart(2, '0')}</h3>
-            </div>
-            <div className="text-right">
-              <span className="text-error font-bold text-lg">{pctOf(stats.highRisk, stats.totalPatients)}%</span>
-              <div className="w-12 h-1.5 bg-surface-container rounded-full mt-2">
-                <div 
-                  className="bg-error h-full rounded-full transition-transform duration-300 group-hover:scale-x-110 origin-left"
-                  style={{ width: `${pctOf(stats.highRisk, stats.totalPatients)}%` }}
-                ></div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Main Content Grid */}
-        <section className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-          
-          {/* Left: Alerts & Status */}
-          <div className="space-y-6">
-            <h2 className="text-xl font-bold text-on-surface flex items-center gap-2">
-              <span className="material-symbols-outlined text-primary">notifications</span>
-              {t('activityAlerts', 'Activity & Alerts')}
-            </h2>
-            
-            <div className="space-y-4">
-              {/* High risk check alert */}
-              {stats.highRisk === 0 ? (
-                <div 
-                  onClick={() => navigate('/patients')}
-                  className="border-l-4 border-secondary p-5 rounded-r-xl flex items-center gap-4 transition-all hover:translate-x-1 cursor-pointer"
-                  style={{
-                    background: 'rgba(230, 242, 242, 0.72)',
-                    backdropFilter: 'blur(10px)',
-                    WebkitBackdropFilter: 'blur(10px)',
-                    borderTop: '1px solid rgba(255, 255, 255, 0.4)',
-                    borderRight: '1px solid rgba(255, 255, 255, 0.4)',
-                    borderBottom: '1px solid rgba(255, 255, 255, 0.4)',
-                    boxShadow: '0 4px 16px rgba(0, 109, 119, 0.02)',
-                  }}
-                >
-                  <div className="bg-secondary/10 p-2 rounded-full flex-shrink-0">
-                    <span className="material-symbols-outlined text-secondary" style={{ fontVariationSettings: "'FILL' 1" }}>
-                      check_circle
-                    </span>
-                  </div>
-                  <div>
-                    <p className="font-bold text-sm text-on-secondary-container">{t('noCriticalAlerts', 'No Critical Alerts Today')}</p>
-                    <p className="text-xs text-on-surface-variant mt-0.5">{t('allPatientsStable', 'All high-risk patients are currently stable.')}</p>
-                  </div>
-                </div>
-              ) : (
-                <div 
-                  onClick={() => navigate('/patients')}
-                  className="border-l-4 border-error p-5 rounded-r-xl flex items-center gap-4 transition-all hover:translate-x-1 cursor-pointer"
-                  style={{
-                    background: 'rgba(254, 242, 242, 0.72)',
-                    backdropFilter: 'blur(10px)',
-                    WebkitBackdropFilter: 'blur(10px)',
-                    borderTop: '1px solid rgba(255, 255, 255, 0.4)',
-                    borderRight: '1px solid rgba(255, 255, 255, 0.4)',
-                    borderBottom: '1px solid rgba(255, 255, 255, 0.4)',
-                    boxShadow: '0 4px 16px rgba(185, 28, 28, 0.02)',
-                  }}
-                >
-                  <div className="bg-error/10 p-2 rounded-full flex-shrink-0">
-                    <span className="material-symbols-outlined text-error" style={{ fontVariationSettings: "'FILL' 1" }}>
-                      warning
-                    </span>
-                  </div>
-                  <div>
-                    <p className="font-bold text-sm text-error">{t('highRiskAlertsCount', '{{count}} High-Risk Patients Need Attention', { count: stats.highRisk })}</p>
-                    <p className="text-xs text-on-surface-variant mt-0.5">{t('followUpRecommended', 'Immediate follow-up recommended for priority care.')}</p>
-                  </div>
-                </div>
-              )}
-
-              {/* Warning Alert */}
-              {stats.remindersCount > 0 ? (
-                <div 
-                  onClick={() => navigate('/reminders')}
-                  className="border-l-4 border-tertiary p-5 rounded-r-xl flex items-center gap-4 transition-all hover:translate-x-1 cursor-pointer"
-                  style={{
-                    background: 'rgba(254, 243, 199, 0.72)',
-                    backdropFilter: 'blur(10px)',
-                    WebkitBackdropFilter: 'blur(10px)',
-                    borderTop: '1px solid rgba(255, 255, 255, 0.4)',
-                    borderRight: '1px solid rgba(255, 255, 255, 0.4)',
-                    borderBottom: '1px solid rgba(255, 255, 255, 0.4)',
-                    boxShadow: '0 4px 16px rgba(217, 119, 6, 0.02)',
-                  }}
-                >
-                  <div className="bg-tertiary/10 p-2 rounded-full flex-shrink-0">
-                    <span className="material-symbols-outlined text-tertiary" style={{ fontVariationSettings: "'FILL' 1" }}>
-                      warning
-                    </span>
-                  </div>
-                  <div>
-                    <p className="font-bold text-sm text-on-tertiary-fixed-variant">{t('pendingVisitsCount', '{{count}} Visits Pending', { count: stats.remindersCount })}</p>
-                    <p className="text-xs text-on-surface-variant mt-0.5">{t('pendingVisitsDesc', 'Scheduled checkups require updates today.')}</p>
-                  </div>
-                </div>
-              ) : (
-                <div 
-                  onClick={() => navigate('/reminders')}
-                  className="border-l-4 border-secondary p-5 rounded-r-xl flex items-center gap-4 transition-all hover:translate-x-1 cursor-pointer"
-                  style={{
-                    background: 'rgba(230, 242, 242, 0.72)',
-                    backdropFilter: 'blur(10px)',
-                    WebkitBackdropFilter: 'blur(10px)',
-                    borderTop: '1px solid rgba(255, 255, 255, 0.4)',
-                    borderRight: '1px solid rgba(255, 255, 255, 0.4)',
-                    borderBottom: '1px solid rgba(255, 255, 255, 0.4)',
-                    boxShadow: '0 4px 16px rgba(0, 109, 119, 0.02)',
-                  }}
-                >
-                  <div className="bg-secondary/10 p-2 rounded-full flex-shrink-0">
-                    <span className="material-symbols-outlined text-secondary" style={{ fontVariationSettings: "'FILL' 1" }}>
-                      check_circle
-                    </span>
-                  </div>
-                  <div>
-                    <p className="font-bold text-sm text-on-secondary-container">{t('allVisitsCompleted', 'All Visits Completed')}</p>
-                    <p className="text-xs text-on-surface-variant mt-0.5">{t('allVisitsCompletedDesc', "Great work! You are fully up to date with today's schedule.")}</p>
-                  </div>
-                </div>
-              )}
-
-              {/* Neutral Stats Card */}
-              <div 
-                onClick={() => navigate('/patients')}
-                className="p-5 rounded-xl flex items-center justify-between group cursor-pointer transition-all border border-white/60 hover:border-primary/40 hover:bg-white/80"
-                style={GLASS_CARD_STYLE}
-              >
-                <div className="flex items-center gap-4 min-w-0">
-                  <div className="bg-primary/10 p-2 rounded-full flex-shrink-0">
-                    <span className="material-symbols-outlined text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>
-                      person_pin
-                    </span>
-                  </div>
-                  <div className="min-w-0">
-                    <p className="font-semibold text-sm text-on-surface truncate">{t('totalPatientsCount', '{{count}} Total Patients Managed', { count: stats.totalPatients })}</p>
-                    <p className="text-xs text-on-surface-variant mt-0.5 truncate">{t('secureOfflineRegistry', 'Secure offline records registry')}</p>
-                  </div>
-                </div>
-                <span className="material-symbols-outlined text-on-surface-variant group-hover:translate-x-1 transition-transform">
-                  chevron_right
-                </span>
-              </div>
-            </div>
-
-            {/* Cloud Sync Banner */}
-            <div 
-              className="p-6 rounded-2xl border border-white/60 relative overflow-hidden"
-              style={GLASS_CARD_STYLE}
+            {/* Patient Breakdown */}
+            <div
+              className="p-5 rounded-2xl bg-white border border-slate-100"
+              style={{ boxShadow: '0 1px 4px rgba(15,23,42,0.04)' }}
             >
               <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <span className="material-symbols-outlined text-primary">cloud_done</span>
-                  <span className="font-bold text-sm text-on-surface">{t('cloudSyncTitle', 'Aiven Cloud Sync')}</span>
-                </div>
-                <div className="flex items-center gap-1.5 px-3 py-1 bg-secondary/10 rounded-full flex-shrink-0">
-                  <span className="w-2 h-2 bg-secondary rounded-full animate-pulse"></span>
-                  <span className="text-[10px] font-bold text-secondary tracking-widest uppercase">{t('live', 'LIVE')}</span>
-                </div>
+                <h3 className="text-sm font-bold text-slate-700">Patient Breakdown</h3>
+                <button
+                  onClick={() => navigate('/patients')}
+                  className="text-xs text-slate-400 hover:text-slate-700 transition-colors"
+                >
+                  All →
+                </button>
               </div>
-              <p className="text-xs text-on-surface-variant">
-                {t('cloudSyncDesc', 'All patient health records are encrypted end-to-end and securely backed up to your dedicated cloud instance.')}
-              </p>
-            </div>
-          </div>
 
-          {/* Right: Actions & Programmes */}
-          <div className="space-y-6">
-            <h2 className="text-xl font-bold text-on-surface flex items-center gap-2">
-              <span className="material-symbols-outlined text-primary">rocket_launch</span>
-              {t('quickActions', 'Quick Actions')}
-            </h2>
-            
-            <div className="grid grid-cols-2 gap-4">
-              <button 
-                onClick={() => navigate('/reminders')}
-                className="p-6 rounded-2xl border border-white/60 hover:border-primary hover:bg-white/80 transition-all text-left flex flex-col gap-3 group"
-                style={GLASS_CARD_STYLE}
-              >
-                <span className="material-symbols-outlined text-primary group-hover:scale-110 transition-transform">event_repeat</span>
-                <span className="font-bold text-sm text-on-surface">{t('reminders')}</span>
-              </button>
-              
-              <button 
-                onClick={() => navigate('/reports')}
-                className="p-6 rounded-2xl border border-white/60 hover:border-primary hover:bg-white/80 transition-all text-left flex flex-col gap-3 group"
-                style={GLASS_CARD_STYLE}
-              >
-                <span className="material-symbols-outlined text-primary group-hover:scale-110 transition-transform">clinical_notes</span>
-                <span className="font-bold text-sm text-on-surface">{t('medicalRecords', 'Health Records')}</span>
-              </button>
-              
-              <button 
-                onClick={() => navigate('/patients')}
-                className="p-6 rounded-2xl border border-white/60 hover:border-primary hover:bg-white/80 transition-all text-left flex flex-col gap-3 group"
-                style={GLASS_CARD_STYLE}
-              >
-                <span className="material-symbols-outlined text-primary group-hover:scale-110 transition-transform">group_add</span>
-                <span className="font-bold text-sm text-on-surface">{t('patients', 'Patient Registry')}</span>
-              </button>
-              
-              <button 
-                onClick={() => navigate('/programmes')}
-                className="p-6 rounded-2xl border border-white/60 hover:border-primary hover:bg-white/80 transition-all text-left flex flex-col gap-3 group"
-                style={GLASS_CARD_STYLE}
-              >
-                <span className="material-symbols-outlined text-primary group-hover:scale-110 transition-transform">health_and_safety</span>
-                <span className="font-bold text-sm text-on-surface">{t('programmes', 'Health Programmes')}</span>
-              </button>
-            </div>
-
-            {/* Maternal Health Banner */}
-            <div 
-              onClick={() => navigate('/programmes/maternal')}
-              className="relative rounded-2xl overflow-hidden h-48 group cursor-pointer"
-              style={{ boxShadow: '0 4px 12px rgba(0, 109, 119, 0.08)' }}
-            >
-              <img 
-                alt="Maternal Health Programme Illustration" 
-                className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" 
-                src="https://lh3.googleusercontent.com/aida-public/AB6AXuCRDBztH8Y0m2I03NEgwbi7WPLkXSVBhYUzyAoLvYXo0h78MC1a7ZiLL4LQVeCrNUs4qtBV1YSiiHVEVYtf6jv2zMFUn76ARpA44LrW2tm0YZWmSk30hcPqTXxF4EFzsI4BleGVp0eNEHrn08Io3QIIJzal5mVzaK6QVrkJOMM3-7UqvYnBM2S-O4vpu9fStQ_KmoNto2RMHqIhd3U5kAizxcDG2MBe5Hl92GODYJQ8xEEyrtXqBnBpMLgygFWJ5fP8u5CUZY1zs4I"
-              />
-              <div className="absolute inset-0 bg-primary/80 flex flex-col justify-end p-6">
-                <h4 className="text-white text-lg font-bold mb-1">{t('maternalHealth', 'Maternal & Child Health')}</h4>
-                <p className="text-white/80 text-xs">{t('maternalHealthEnrollDesc', 'Enroll new families in the postnatal care initiative.')}</p>
-                <div className="mt-4 flex gap-2">
-                  <span className="bg-white/20 px-3 py-1 rounded-full text-[10px] text-white font-bold uppercase tracking-wider backdrop-blur-sm">
-                    {t('maternalActiveMembers', '80+ Active Members')}
+              {/* Donut Chart */}
+              <div className="flex items-center justify-center my-2 relative">
+                <DonutChart segments={donutSegments} size={140} strokeWidth={16} />
+                {/* Center label */}
+                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                  <span className="text-2xl font-bold text-slate-900 tabular-nums">
+                    {stats.totalPatients}
+                  </span>
+                  <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                    Total
                   </span>
                 </div>
               </div>
+
+              {/* Legend */}
+              <div className="space-y-2.5 mt-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 flex-shrink-0" />
+                    <span className="text-xs font-medium text-slate-600">Stable</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-800 tabular-nums">{stableCases}</span>
+                    <span className="text-[10px] text-slate-400">{stablePct}%</span>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-rose-500 flex-shrink-0" />
+                    <span className="text-xs font-medium text-slate-600">High-Risk</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-800 tabular-nums">{stats.highRisk}</span>
+                    <span className="text-[10px] text-slate-400">{highRiskPct}%</span>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-blue-500 flex-shrink-0" />
+                    <span className="text-xs font-medium text-slate-600">Visits Done</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-800 tabular-nums">{visitsDone}</span>
+                    <span className="text-[10px] text-slate-400">This month</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Actions */}
+            <div
+              className="p-5 rounded-2xl bg-white border border-slate-100"
+              style={{ boxShadow: '0 1px 4px rgba(15,23,42,0.04)' }}
+            >
+              <h3 className="text-sm font-bold text-slate-700 mb-3">Quick Actions</h3>
+              <div className="grid grid-cols-2 gap-2.5">
+                <QuickActionBtn
+                  icon={Bell}
+                  label="Reminders"
+                  accent="#D97706"
+                  onClick={() => navigate('/reminders')}
+                />
+                <QuickActionBtn
+                  icon={FolderHeart}
+                  label="Health Records"
+                  accent="#2563EB"
+                  onClick={() => navigate('/reports')}
+                />
+                <QuickActionBtn
+                  icon={Users}
+                  label="Patients"
+                  accent="#0F766E"
+                  onClick={() => navigate('/patients')}
+                />
+                <QuickActionBtn
+                  icon={ClipboardList}
+                  label="Programmes"
+                  accent="#7C3AED"
+                  onClick={() => navigate('/programmes')}
+                />
+              </div>
             </div>
           </div>
         </section>
+
+        {/* ── Programme Cards Row ── */}
+        <section>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-bold text-slate-700 uppercase tracking-widest">
+              Health Programmes
+            </h2>
+            <button
+              onClick={() => navigate('/programmes')}
+              className="text-xs font-semibold text-teal-700 hover:text-teal-900 flex items-center gap-1"
+            >
+              View all <ChevronRight size={13} />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[
+              {
+                label: 'Maternal & Child',
+                icon: Heart,
+                accent: '#EC4899',
+                bg: '#FFF0F8',
+                tag: 'Ongoing',
+                path: '/programmes/maternal',
+              },
+              {
+                label: 'Vaccination',
+                icon: Syringe,
+                accent: '#2563EB',
+                bg: '#EFF6FF',
+                tag: 'Active',
+                path: '/programmes/vaccination',
+              },
+              {
+                label: 'Disease Tracking',
+                icon: Activity,
+                accent: '#F43F5E',
+                bg: '#FFF1F2',
+                tag: 'Monitoring',
+                path: '/programmes/disease',
+              },
+              {
+                label: 'NCD Monitoring',
+                icon: Stethoscope,
+                accent: '#7C3AED',
+                bg: '#F5F3FF',
+                tag: 'Active',
+                path: '/programmes/ncd',
+              },
+            ].map((prog) => (
+              <button
+                key={prog.path}
+                onClick={() => navigate(prog.path)}
+                className="group flex flex-col gap-3 p-4 rounded-2xl bg-white border border-slate-100 hover:border-slate-200 hover:shadow-md transition-all duration-200 text-left"
+                style={{ boxShadow: '0 1px 4px rgba(15,23,42,0.04)' }}
+              >
+                <div className="flex items-center justify-between">
+                  <div
+                    className="w-9 h-9 rounded-xl flex items-center justify-center"
+                    style={{ background: prog.bg }}
+                  >
+                    <prog.icon size={17} style={{ color: prog.accent }} />
+                  </div>
+                  <span
+                    className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full"
+                    style={{ background: prog.bg, color: prog.accent }}
+                  >
+                    {prog.tag}
+                  </span>
+                </div>
+                <p className="text-xs font-bold text-slate-700 leading-snug group-hover:text-slate-900 transition-colors">
+                  {prog.label}
+                </p>
+                <div className="flex items-center gap-1 text-[10px] font-semibold" style={{ color: prog.accent }}>
+                  Open <ArrowUpRight size={11} />
+                </div>
+              </button>
+            ))}
+          </div>
+        </section>
+
       </main>
     </div>
   );
