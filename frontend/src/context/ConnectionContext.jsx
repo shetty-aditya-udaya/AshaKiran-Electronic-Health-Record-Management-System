@@ -68,7 +68,10 @@ export function ConnectionProvider({ children }) {
 
   useEffect(() => {
     check();
-    pollRef.current = setInterval(check, POLL_INTERVAL_MS);
+    
+    // Adaptive polling: check connection more frequently when offline (5s vs 15s)
+    const intervalMs = serverStatus === 'offline' ? 5_000 : POLL_INTERVAL_MS;
+    pollRef.current = setInterval(check, intervalMs);
 
     const onVisible = () => { if (document.visibilityState === 'visible') check(); };
     document.addEventListener('visibilitychange', onVisible);
@@ -104,7 +107,7 @@ export function ConnectionProvider({ children }) {
       window.removeEventListener('api-call-success', handleApiSuccess);
       window.removeEventListener('api-call-failure', handleApiFailure);
     };
-  }, [check, retryNow]);
+  }, [check, retryNow, serverStatus]);
 
   const isServerReachable = serverStatus === 'online';
 

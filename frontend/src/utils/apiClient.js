@@ -227,16 +227,23 @@ export const api = {
 // Uses a relative path so it goes through Vite proxy → Flask.
 // Returns true ONLY on a proper 2xx response; 503 degraded = false.
 export async function checkHealth() {
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 8_000);
-    const res = await fetch(`${API_BASE_URL}/health`, {
-      signal: controller.signal,
-      cache: 'no-store',
-    });
-    clearTimeout(timer);
-    return res.ok; // strictly 200-299
-  } catch {
-    return false;
+  const attempts = 2;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 6_000); // 6s per attempt
+      const res = await fetch(`${API_BASE_URL}/health`, {
+        signal: controller.signal,
+        cache: 'no-store',
+      });
+      clearTimeout(timer);
+      if (res.ok) return true;
+    } catch (err) {
+      console.warn(`[checkHealth] attempt ${i + 1} failed:`, err.message);
+    }
+    if (i < attempts - 1) {
+      await new Promise(r => setTimeout(r, 1000)); // sleep 1s before retry
+    }
   }
+  return false;
 }

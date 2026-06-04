@@ -30,7 +30,8 @@ def _is_allowed_origin(origin: str) -> bool:
     # Strip trailing slash just in case
     clean_origin = origin.rstrip('/')
     
-    if clean_origin in _ALLOWED_ORIGINS:
+    # Allow allowed origins and "null" origin (common in mobile WebViews / PWA standalone modes)
+    if clean_origin in _ALLOWED_ORIGINS or clean_origin == "null":
         return True
         
     # In development mode, also allow local developer ports
@@ -112,6 +113,12 @@ def create_app():
     @app.after_request
     def add_cors_headers(response):
         origin = request.headers.get("Origin", "")
+        # Always allow CORS for health endpoint to prevent false offline status
+        if request.path == "/health" or request.path == "/":
+            response.headers["Access-Control-Allow-Origin"]      = origin if origin else "*"
+            response.headers["Access-Control-Allow-Headers"]     = "Content-Type, Authorization"
+            response.headers["Access-Control-Allow-Methods"]     = "GET, OPTIONS"
+            return response
         if _is_allowed_origin(origin):
             response.headers["Access-Control-Allow-Origin"]      = origin
             response.headers["Access-Control-Allow-Credentials"] = "true"
@@ -123,6 +130,12 @@ def create_app():
     def handle_options():
         if request.method == "OPTIONS":
             origin = request.headers.get("Origin", "")
+            if request.path == "/health" or request.path == "/":
+                resp = make_response("", 204)
+                resp.headers["Access-Control-Allow-Origin"]      = origin if origin else "*"
+                resp.headers["Access-Control-Allow-Headers"]     = "Content-Type, Authorization"
+                resp.headers["Access-Control-Allow-Methods"]     = "GET, OPTIONS"
+                return resp
             if _is_allowed_origin(origin):
                 resp = make_response("", 204)
                 resp.headers["Access-Control-Allow-Origin"]      = origin
