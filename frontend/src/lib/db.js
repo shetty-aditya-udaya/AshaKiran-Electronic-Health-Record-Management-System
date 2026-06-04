@@ -1061,31 +1061,6 @@ export async function getFullDiagnostics() {
   };
 }
 
-export async function getLocalDashboardStats() {
-  const patients = await db.patients.toArray();
-  const reminders = await db.reminders.toArray();
-  const visits = await db.visits.toArray();
-
-  const totalPatients = patients.length;
-  const highRisk = patients.filter(p => p.risk_level === 'high' || p.is_high_risk).length;
-
-  const patientIds = new Set(patients.map(p => String(p.id || p.local_id)));
-
-  // Real pending reminders count (only active/pending reminders for existing patients)
-  const remindersCount = reminders.filter(r => 
-    r.status === 'PENDING' && 
-    patientIds.has(String(r.patientId || r.patient_id))
-  ).length;
-
-  // Real completed visits count
-  const visitsCompletedCount = visits.filter(v => 
-    (v.status === 'COMPLETED' || v.completed_at) &&
-    patientIds.has(String(v.patientId || v.patient_id))
-  ).length;
-
-  return { totalPatients, highRisk, remindersCount, visitsCompletedCount };
-}
-
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // PRESCRIPTION IMAGES  (offline-first base64 blobs, synced to server later)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1694,13 +1669,5 @@ export async function getLocalDashboardAnalytics() {
   }
 
   return { stats, distribution, conditions, monthlyTrend, recentActivities, todaySchedule, alerts };
-}
-
-/**
- * Legacy shim — returns the minimal stat fields the old dashboard used.
- */
-export async function getLocalDashboardStats() {
-  const data = await getLocalDashboardAnalytics();
-  return data.stats;
 }
 
