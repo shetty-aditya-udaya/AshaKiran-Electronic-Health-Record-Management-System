@@ -9,6 +9,7 @@ import { usePatients } from '../hooks/usePatients';
 import { SYNC } from '../lib/db';
 import BrandLogo from '../components/BrandLogo';
 import { useTranslation } from 'react-i18next';
+import { useConnection } from '../context/ConnectionContext';
 
 const PAGE_SIZE = 9;
 
@@ -34,6 +35,7 @@ function matchesFilter(p, filter) {
 export default function PatientList({ onOpenAddVisit }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const { isServerReachable } = useConnection();
 
   // ── Offline-first data ─────────────────────────────────────────────────────
   const {
@@ -46,7 +48,7 @@ export default function PatientList({ onOpenAddVisit }) {
     fetchFromServer,
   } = usePatients();
 
-  const [isOnline, setIsOnline]         = useState(navigator.onLine);
+  const isOnline                        = isServerReachable;
   const [searchTerm, setSearchTerm]     = useState('');
   const [activeFilter, setActiveFilter] = useState('All Patients');
   const [villageFilter, setVillageFilter] = useState('All');
@@ -57,17 +59,6 @@ export default function PatientList({ onOpenAddVisit }) {
   const [isDetailsOpen, setIsDetailsOpen]       = useState(false);
   const [deleteTarget, setDeleteTarget]         = useState(null);   // patient to delete
   const [deleteLoading, setDeleteLoading]       = useState(false);
-
-  // ── online / offline watcher ───────────────────────────────────────────────
-  useEffect(() => {
-    const handle = () => setIsOnline(navigator.onLine);
-    window.addEventListener('online',  handle);
-    window.addEventListener('offline', handle);
-    return () => {
-      window.removeEventListener('online',  handle);
-      window.removeEventListener('offline', handle);
-    };
-  }, []);
 
   // reset pagination on filter change
   useEffect(() => { setVisibleCount(PAGE_SIZE); }, [searchTerm, activeFilter, villageFilter]);

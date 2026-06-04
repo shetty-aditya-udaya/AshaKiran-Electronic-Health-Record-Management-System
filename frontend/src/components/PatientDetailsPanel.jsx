@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { API_BASE_URL } from '../config';
+import { useConnection } from '../context/ConnectionContext';
 import AddVisitModal from './AddVisitModal';
 import { getVisitsForPatient, bulkUpsertVisits } from '../lib/db';
 import {
@@ -34,6 +35,7 @@ export default function PatientDetailsPanel({ patient, isOpen, onClose, onAddVis
   const navigate = useNavigate();
   const [visits, setVisits]   = useState([]);
   const [loading, setLoading] = useState(false);
+  const { isServerReachable } = useConnection();
 
   const { deleteTarget, isDeleting, requestDelete, cancelDelete, confirmDelete } =
     useDeleteVisit({ onDeleted: () => loadLocalVisits() });
@@ -70,7 +72,7 @@ export default function PatientDetailsPanel({ patient, isOpen, onClose, onAddVis
     await loadLocalVisits();
 
     // 2. Fetch fresh online in background
-    if (navigator.onLine && patient.id) {
+    if (isServerReachable && patient.id) {
       try {
         const token = localStorage.getItem('token');
         const resp = await fetch(`${API_BASE_URL}/api/visits?patientId=${patient.id}`, {
@@ -89,7 +91,7 @@ export default function PatientDetailsPanel({ patient, isOpen, onClose, onAddVis
       }
     }
     setLoading(false);
-  }, [patient, loadLocalVisits]);
+  }, [patient, loadLocalVisits, isServerReachable]);
 
   useEffect(() => {
     if (isOpen && patient) {

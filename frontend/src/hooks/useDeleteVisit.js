@@ -11,10 +11,12 @@ import { useCallback, useState } from 'react';
 import { deleteVisitAndRelated } from '../lib/db';
 import { api, NetworkError } from '../utils/apiClient';
 import toast from 'react-hot-toast';
+import { useConnection } from '../context/ConnectionContext';
 
 export function useDeleteVisit({ onDeleted } = {}) {
   const [deleteTarget, setDeleteTarget] = useState(null);  // visit object to confirm
   const [isDeleting,   setIsDeleting]   = useState(false);
+  const { isServerReachable } = useConnection();
 
   const requestDelete = useCallback((visit) => {
     setDeleteTarget(visit);
@@ -40,7 +42,7 @@ export function useDeleteVisit({ onDeleted } = {}) {
       window.dispatchEvent(new CustomEvent('local-data-written'));
 
       // 3. Delete on server (non-blocking — don't wait if offline)
-      if (serverId && navigator.onLine) {
+      if (serverId && isServerReachable) {
         api.delete(`/api/visits/${serverId}`).catch(err => {
           if (err?.status !== 404) {
             console.warn('[useDeleteVisit] Server delete failed (IDB already cleaned):', err?.message);

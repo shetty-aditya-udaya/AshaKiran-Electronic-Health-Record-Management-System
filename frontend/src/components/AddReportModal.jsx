@@ -3,9 +3,11 @@ import { X, Camera, Upload, Check, FileText, Activity, Pill, Syringe } from 'luc
 import toast from 'react-hot-toast';
 import { useTranslation } from 'react-i18next';
 import { API_BASE_URL } from '../config/api';
+import { useConnection } from '../context/ConnectionContext';
 
 export default function AddReportModal({ isOpen, onClose, patientId, onSuccess }) {
   const { t } = useTranslation();
+  const { isServerReachable } = useConnection();
   const [formData, setFormData] = useState({
     title: '',
     type: 'Medical',
@@ -70,7 +72,7 @@ export default function AddReportModal({ isOpen, onClose, patientId, onSuccess }
 
       let synced = false;
       // 2. Push to server if online
-      if (navigator.onLine) {
+      if (isServerReachable) {
         try {
           const token = localStorage.getItem('token');
           const resp  = await fetch(`${API_BASE_URL}/api/reports/add`, {

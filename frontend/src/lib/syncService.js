@@ -838,16 +838,15 @@ async function _heartbeat() {
   if (ok) {
     _failStreak = 0;
 
-    if (_wasOnline === false) {
-      // Genuine offline → online transition
+    if (_wasOnline === false || _wasOnline === undefined) {
       log.info('Heartbeat: server back online — triggering sync');
       _wasOnline = true;
       syncAll();
-    } else if (_wasOnline === undefined) {
-      // First heartbeat and server is up — init state silently
+    } else {
       _wasOnline = true;
+      // Periodic sync to check for updates from other devices
+      syncAll();
     }
-    // Already online and staying online — no action needed
   } else {
     _failStreak++;
 
@@ -888,6 +887,14 @@ export function initAutoSync() {
     _failStreak = 0;
     // Mark as online now so the next heartbeat doesn't ALSO trigger syncAll
     // (which would start two redundant parallel sync passes on every reconnect).
+    _wasOnline = true;
+    syncAll();
+  });
+
+  // Sync on ConnectionContext server online detection
+  window.addEventListener('server-online', () => {
+    log.info('server-online custom event → triggering immediate sync');
+    _failStreak = 0;
     _wasOnline = true;
     syncAll();
   });

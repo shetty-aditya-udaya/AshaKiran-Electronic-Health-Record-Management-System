@@ -24,12 +24,15 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,ico,png,jpg,jpeg,svg,webmanifest}'],
         runtimeCaching: [
           {
-            urlPattern: ({ url }) => url.pathname.startsWith('/api/'),
+            urlPattern: ({ url }) => url.pathname.startsWith('/api/') || url.href.includes('/api/'),
             handler: 'NetworkFirst',
             options: {
               cacheName: 'api-cache',
               networkTimeoutSeconds: 5,
-              expiration: { maxEntries: 100, maxAgeSeconds: 24 * 3600 }
+              expiration: { maxEntries: 100, maxAgeSeconds: 24 * 3600 },
+              cacheableResponse: {
+                statuses: [0, 200]
+              }
             }
           }
         ]

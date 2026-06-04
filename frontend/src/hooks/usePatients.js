@@ -15,12 +15,14 @@ import {
 } from '../lib/db';
 import { api, NetworkError } from '../utils/apiClient';
 import toast from 'react-hot-toast';
+import { useConnection } from '../context/ConnectionContext';
 
 export function usePatients() {
   const [patients, setPatients] = useState([]);
   const [loading, setLoading]   = useState(true);
   const [syncing, setSyncing]   = useState(false);
   const [error, setError]       = useState(null);
+  const { isServerReachable }   = useConnection();
 
   // ── Load from IDB first (instant, zero-wait) ───────────────────────────────
   const loadLocal = useCallback(async () => {
@@ -91,7 +93,7 @@ export function usePatients() {
     window.dispatchEvent(new CustomEvent('patient-added'));
 
     // 3. Try to push to server right now if online
-    if (navigator.onLine) {
+    if (isServerReachable) {
       try {
         const data     = await api.post('/api/patients', record);
         const serverId = data?.patient?.id ?? data?.id;
@@ -111,7 +113,7 @@ export function usePatients() {
     }
 
     return record;
-  }, [refresh]);
+  }, [refresh, isServerReachable]);
 
   useEffect(() => {
     loadLocal().then(() => fetchFromServer(true));
@@ -136,7 +138,7 @@ export function usePatients() {
     window.dispatchEvent(new CustomEvent('patient-deleted'));
 
     // 2. If online and patient was synced to server, delete on server
-    if (serverId && navigator.onLine) {
+    if (serverId && isServerReachable) {
       try {
         await api.delete(`/api/patients/${serverId}`);
       } catch (err) {
@@ -146,7 +148,7 @@ export function usePatients() {
         }
       }
     }
-  }, [refresh]);
+  }, [refresh, isServerReachable]);
 
   return { patients, loading, syncing, error, addPatient, deletePatient, refresh, fetchFromServer };
 }

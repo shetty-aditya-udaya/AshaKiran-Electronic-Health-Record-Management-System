@@ -47,11 +47,13 @@ const languages = [
 
 import Navbar from './components/Navbar';
 import AddVisitModal from './components/AddVisitModal';
+import { useConnection } from './context/ConnectionContext';
 
 export default function App() {
   const { t, i18n } = useTranslation();
   const lang = i18n.language || 'en';
   const [user, setUser] = useState(JSON.parse(localStorage.getItem('user')) || null);
+  const { isServerReachable } = useConnection();
   
   // Global Modal States
   const [isAddVisitOpen, setIsAddVisitOpen] = useState(false);
@@ -93,9 +95,8 @@ export default function App() {
   // keep the session alive so ASHA workers can continue working without internet.
   useEffect(() => {
     const onSessionExpired = () => {
-      // Guard: if the browser reports no network, the server was unreachable —
-      // this is NOT a genuine expiry, just a connectivity loss. Keep session.
-      if (!navigator.onLine) {
+      // Guard: if the server was unreachable, this is NOT a genuine expiry, just a connectivity loss. Keep session.
+      if (!isServerReachable) {
         console.warn('[App] session-expired fired while offline — ignoring (session preserved)');
         return;
       }
@@ -106,7 +107,7 @@ export default function App() {
     };
     window.addEventListener('session-expired', onSessionExpired);
     return () => window.removeEventListener('session-expired', onSessionExpired);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isServerReachable]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleProfileUpdate = (updated) => {
     if (!updated) { handleLogout(); return; }

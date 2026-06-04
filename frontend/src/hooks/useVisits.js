@@ -7,10 +7,12 @@ import {
 } from '../lib/db';
 import { api, NetworkError } from '../utils/apiClient';
 import toast from 'react-hot-toast';
+import { useConnection } from '../context/ConnectionContext';
 
 export function useVisits(patientId) {
   const [visits, setVisits]   = useState([]);
   const [loading, setLoading] = useState(true);
+  const { isServerReachable } = useConnection();
 
   const refresh = useCallback(async () => {
     if (!patientId) return;
@@ -19,7 +21,7 @@ export function useVisits(patientId) {
   }, [patientId]);
 
   const fetchFromServer = useCallback(async () => {
-    if (!patientId || !navigator.onLine) return;
+    if (!patientId || !isServerReachable) return;
     try {
       const data = await api.get(`/api/patients/${patientId}/visits`);
       const arr  = Array.isArray(data) ? data : (data?.visits || []);
@@ -34,7 +36,7 @@ export function useVisits(patientId) {
     } finally {
       setLoading(false);
     }
-  }, [patientId, refresh]);
+  }, [patientId, refresh, isServerReachable]);
 
   const addVisit = useCallback(async (formData) => {
     const local_id = crypto.randomUUID();
@@ -53,7 +55,7 @@ export function useVisits(patientId) {
     window.dispatchEvent(new CustomEvent('visit-added'));
 
     // 2. Try to push now if online
-    if (navigator.onLine) {
+    if (isServerReachable) {
       try {
         const data = await api.post('/api/visits', { ...record, patientId });
         const serverId = data?.visit?.id ?? data?.id;
@@ -68,7 +70,7 @@ export function useVisits(patientId) {
     }
 
     return record;
-  }, [patientId, refresh]);
+  }, [patientId, refresh, isServerReachable]);
 
   useEffect(() => {
     refresh().then(() => {

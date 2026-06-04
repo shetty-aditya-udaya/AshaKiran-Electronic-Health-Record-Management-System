@@ -161,6 +161,7 @@ async function request(method, path, { body, headers: extra = {}, raw = false } 
 
   try {
     const res = await fetchWithRetry(url, options);
+    window.dispatchEvent(new CustomEvent('api-call-success'));
     if (raw) return res;
 
     // Parse JSON, gracefully handle empty body
@@ -172,6 +173,9 @@ async function request(method, path, { body, headers: extra = {}, raw = false } 
       return text;
     }
   } catch (err) {
+    if (err instanceof NetworkError) {
+      window.dispatchEvent(new CustomEvent('api-call-failure'));
+    }
     // Intercept 401 expired tokens (but not login or refresh requests themselves)
     if (err instanceof ApiError && err.status === 401 && path !== '/api/login' && path !== '/api/refresh') {
       console.warn(`[API] 401 Unauthorized for ${path}. Attempting silent refresh...`);
@@ -181,6 +185,7 @@ async function request(method, path, { body, headers: extra = {}, raw = false } 
           console.log(`[API] Silent refresh succeeded. Retrying ${path}...`);
           options.headers = buildHeaders(extra, isFormData);
           const res = await fetchWithRetry(url, options);
+          window.dispatchEvent(new CustomEvent('api-call-success'));
           if (raw) return res;
           const text = await res.text();
           if (!text) return null;
@@ -198,6 +203,7 @@ async function request(method, path, { body, headers: extra = {}, raw = false } 
         // and let them continue working offline.
         if (refreshErr instanceof NetworkError) {
           console.warn('[API] Silent refresh unreachable (offline) — keeping session alive');
+          window.dispatchEvent(new CustomEvent('api-call-failure'));
         } else {
           // Any other unexpected error (e.g. JSON parse crash) → treat as expired.
           console.error('[API] Silent refresh exception:', refreshErr);
@@ -223,7 +229,7 @@ export const api = {
 export async function checkHealth() {
   try {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 4_000);
+    const timer = setTimeout(() => controller.abort(), 8_000);
     const res = await fetch(`${API_BASE_URL}/health`, {
       signal: controller.signal,
       cache: 'no-store',

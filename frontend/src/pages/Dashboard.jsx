@@ -4,6 +4,7 @@ import { API_BASE_URL } from '../config';
 import { MapPin } from 'lucide-react';
 import { getLocalDashboardStats } from '../lib/db';
 import { useTranslation } from 'react-i18next';
+import { useConnection } from '../context/ConnectionContext';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -33,6 +34,7 @@ export default function Dashboard() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
+  const { isServerReachable } = useConnection();
   
   useEffect(() => {
     setUser(JSON.parse(localStorage.getItem('user')) || null);
@@ -49,7 +51,7 @@ export default function Dashboard() {
       setLoading(false); // Stop loading since we have local data
 
       // 2. Fetch fresh stats from backend in the background if online
-      if (navigator.onLine) {
+      if (isServerReachable) {
         const token = localStorage.getItem('token');
         const res   = await fetch(`${API_BASE_URL}/api/programmes/summary`, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -69,7 +71,7 @@ export default function Dashboard() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isServerReachable]);
 
   useEffect(() => { fetchStats(); }, [fetchStats]);
 

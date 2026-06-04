@@ -28,6 +28,16 @@ export function ConnectionProvider({ children }) {
   const lastStatus = useRef('online');
 
   const check = useCallback(async () => {
+    if (!navigator.onLine) {
+      failStreak.current = Math.max(failStreak.current + 1, FAIL_THRESHOLD);
+      if (lastStatus.current !== 'offline') {
+        lastStatus.current = 'offline';
+        setServerStatus('offline');
+        window.dispatchEvent(new CustomEvent('server-offline'));
+      }
+      return;
+    }
+
     const ok = await checkHealth();
 
     if (ok) {
@@ -63,11 +73,36 @@ export function ConnectionProvider({ children }) {
     const onVisible = () => { if (document.visibilityState === 'visible') check(); };
     document.addEventListener('visibilitychange', onVisible);
     window.addEventListener('online', retryNow);
+    window.addEventListener('offline', retryNow);
+
+    const handleApiSuccess = () => {
+      failStreak.current = 0;
+      if (lastStatus.current !== 'online') {
+        lastStatus.current = 'online';
+        setServerStatus('online');
+        window.dispatchEvent(new CustomEvent('server-online'));
+      }
+    };
+
+    const handleApiFailure = () => {
+      failStreak.current += 1;
+      if (failStreak.current >= FAIL_THRESHOLD && lastStatus.current === 'online') {
+        lastStatus.current = 'offline';
+        setServerStatus('offline');
+        window.dispatchEvent(new CustomEvent('server-offline'));
+      }
+    };
+
+    window.addEventListener('api-call-success', handleApiSuccess);
+    window.addEventListener('api-call-failure', handleApiFailure);
 
     return () => {
       clearInterval(pollRef.current);
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('online', retryNow);
+      window.removeEventListener('offline', retryNow);
+      window.removeEventListener('api-call-success', handleApiSuccess);
+      window.removeEventListener('api-call-failure', handleApiFailure);
     };
   }, [check, retryNow]);
 
