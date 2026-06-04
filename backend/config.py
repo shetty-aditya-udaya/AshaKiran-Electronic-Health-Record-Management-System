@@ -13,6 +13,13 @@ class Config:
         # Standardize dialect mapping to mysql+pymysql for Railway compatibility
         if _db_url.startswith("mysql://"):
             _db_url = _db_url.replace("mysql://", "mysql+pymysql://", 1)
+        elif _db_url.startswith("sqlite:///"):
+            # Ensure SQLite path is absolute (Step 4)
+            db_file = _db_url.replace("sqlite:///", "")
+            if not os.path.isabs(db_file):
+                _base_dir = os.path.abspath(os.path.dirname(__file__))
+                os.makedirs(os.path.join(_base_dir, "instance"), exist_ok=True)
+                _db_url = f"sqlite:///{os.path.join(_base_dir, 'instance', db_file)}"
     else:
         db_user = os.getenv("DB_USER")
         db_pass = os.getenv("DB_PASSWORD")
@@ -28,7 +35,8 @@ class Config:
             )
         else:
             # Clean development fallback to local SQLite
-            _instance_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "instance")
+            _base_dir = os.path.abspath(os.path.dirname(__file__))
+            _instance_dir = os.path.join(_base_dir, "instance")
             os.makedirs(_instance_dir, exist_ok=True)
             _db_url = f"sqlite:///{os.path.join(_instance_dir, 'ashakiran.db')}"
 

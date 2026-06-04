@@ -48,10 +48,27 @@ def create_app():
     # Security: limit request body size to 16MB (prevents disk-fill attacks on upload)
     app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB
 
+    # ── Auto-create required folders safely ──
+    BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    REQUIRED_DIRS = [
+        "instance",
+        "uploads",
+        "uploads/profile_pics",
+        "uploads/documents",
+        "temp",
+        "reports",
+        "exports"
+    ]
+    for folder in REQUIRED_DIRS:
+        os.makedirs(os.path.join(BASE_DIR, folder), exist_ok=True)
+
     db.init_app(app)
 
-    # ── Database Diagnostics & Handshake ─────────────────────────────────────────
+    # ── Database Diagnostics & Handshake ──
     with app.app_context():
+        # Ensure database tables exist automatically
+        db.create_all()
+
         try:
             uri = app.config.get("SQLALCHEMY_DATABASE_URI", "")
             from sqlalchemy.engine.url import make_url
@@ -69,6 +86,11 @@ def create_app():
             flask_env = os.getenv("FLASK_ENV", "development")
             debug_mode = app.config.get("DEBUG", False)
 
+            # Startup print statements as requested
+            print("BASE_DIR:", BASE_DIR)
+            print("DB PATH:", uri)
+            print("UPLOAD DIR EXISTS:", os.path.exists(os.path.join(BASE_DIR, "uploads")))
+            
             if "sqlite" in dialect:
                 diag_msg = f"DATABASE DIAGNOSTICS WARNING: Remote database host unavailable. Falling back to local SQLite at {db_name}. SSL State: {ssl_state}"
             else:

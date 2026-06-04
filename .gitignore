@@ -28,7 +28,7 @@ backend/logs/
 backend/backend_error.log
 
 # SSL / certs
-backend/ca.pem
+# backend/ca.pem
 
 # Dev artifacts
 backend/instance/

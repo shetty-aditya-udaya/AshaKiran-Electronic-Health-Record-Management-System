@@ -34,9 +34,14 @@ def register():
         return jsonify({"message": "Signup successful. Please login now."}), 201
     except Exception as e:
         db.session.rollback()
+        import traceback
         import sys
-        print(f"SIGNUP ERROR: {str(e)}", file=sys.stderr)
-        return jsonify({"error": f"Registration failed: {str(e)}"}), 500
+        print("REGISTER ERROR:", str(e), file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
 
 @auth_bp.route("/login", methods=["POST"])
 def login():
