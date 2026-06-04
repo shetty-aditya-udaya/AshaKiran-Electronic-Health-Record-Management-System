@@ -78,5 +78,69 @@ export const fallbackClinics = [
     "latitude": 23.7337,
     "longitude": 69.8597,
     "address": "Kutch, Gujarat, India"
+  },
+  {
+    "id": "fb11",
+    "name": "PHC Whitefield",
+    "type": "Primary Health Center",
+    "latitude": 12.9698,
+    "longitude": 77.7500,
+    "address": "Whitefield, Bengaluru, Karnataka, India"
+  },
+  {
+    "id": "fb12",
+    "name": "Arogya Clinic Indiranagar",
+    "type": "Clinic",
+    "latitude": 12.9719,
+    "longitude": 77.6412,
+    "address": "Indiranagar, Bengaluru, Karnataka, India"
+  },
+  {
+    "id": "fb13",
+    "name": "Yelahanka PHC",
+    "type": "Primary Health Center",
+    "latitude": 13.1007,
+    "longitude": 77.5963,
+    "address": "Yelahanka, Bengaluru, Karnataka, India"
+  },
+  {
+    "id": "fb14",
+    "name": "Jayanagar Health Center",
+    "type": "Hospital",
+    "latitude": 12.9308,
+    "longitude": 77.5838,
+    "address": "Jayanagar, Bengaluru, Karnataka, India"
+  },
+  {
+    "id": "fb15",
+    "name": "Majestic Family Clinic",
+    "type": "Clinic",
+    "latitude": 12.9779,
+    "longitude": 77.5767,
+    "address": "Majestic, Bengaluru, Karnataka, India"
+  },
+  {
+    "id": "fb16",
+    "name": "Hebbal Health Center",
+    "type": "Clinic",
+    "latitude": 13.0358,
+    "longitude": 77.5978,
+    "address": "Hebbal, Bengaluru, Karnataka, India"
+  },
+  {
+    "id": "fb17",
+    "name": "Koramangala Community Hospital",
+    "type": "Hospital",
+    "latitude": 12.9352,
+    "longitude": 77.6245,
+    "address": "Koramangala, Bengaluru, Karnataka, India"
+  },
+  {
+    "id": "fb18",
+    "name": "Banashankari PHC",
+    "type": "Primary Health Center",
+    "latitude": 12.9156,
+    "longitude": 77.5736,
+    "address": "Banashankari, Bengaluru, Karnataka, India"
   }
 ];

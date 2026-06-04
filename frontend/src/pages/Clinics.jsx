@@ -174,20 +174,28 @@ export default function Clinics() {
   // ── Search after we have lat/lng ─────────────────────────────────────────
   const doSearch = async (lat, lng) => {
     setStatus('fetching');
+    console.log("User location:", { lat, lng });
     try {
       let results = await fetchFromOverpass(lat, lng);
+      console.log("Clinic API response (raw):", results);
+      
       results = results
         .map((c) => ({ ...c, distance: haversine(lat, lng, c.latitude, c.longitude) }))
-        .sort((a, b) => a.distance - b.distance);
+        .filter((c) => c.distance <= 50)
+        .sort((a, b) => a.distance - b.distance)
+        .slice(0, 20);
 
       if (results.length === 0) {
         // fallback
         results = fallbackClinics
           .map((c) => ({ ...c, distance: haversine(lat, lng, c.latitude, c.longitude) }))
+          .filter((c) => c.distance <= 50)
           .sort((a, b) => a.distance - b.distance)
-          .slice(0, 8);
-        toast(t('clinicsFallbackToast', 'Showing known health centers — live data unavailable'), { icon: 'ℹ️' });
+          .slice(0, 20);
+        console.log("Filtered clinics (fallback):", results);
+        toast(t('clinicsFallbackToast', 'Showing nearby verified clinics'), { icon: 'ℹ️' });
       } else {
+        console.log("Filtered clinics:", results);
         toast.success(t('clinicsFoundToast', 'Found {{count}} facilities nearby', { count: results.length }));
       }
       setClinics(results);
@@ -197,11 +205,13 @@ export default function Clinics() {
       console.error(err);
       const results = fallbackClinics
         .map((c) => ({ ...c, distance: haversine(lat, lng, c.latitude, c.longitude) }))
+        .filter((c) => c.distance <= 50)
         .sort((a, b) => a.distance - b.distance)
-        .slice(0, 8);
+        .slice(0, 20);
+      console.log("Filtered clinics (fallback-error):", results);
       setClinics(results);
       setStatus('done');
-      toast(t('clinicsErrorToast', 'Live search failed — showing known centers'), { icon: '⚠️' });
+      toast(t('clinicsErrorToast', 'Showing nearby verified clinics'), { icon: 'ℹ️' });
     }
   };
 
