@@ -1485,3 +1485,222 @@ export async function deleteVisitAndRelated(visitLocalId, visitServerId) {
     'color:#f97316;font-weight:bold',
   );
 }
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// DASHBOARD ANALYTICS — computed entirely from local IndexedDB
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/**
+ * Returns the same shape as GET /api/dashboard/analytics but computed locally.
+ * Used as the instant offline-first layer — replaced by backend data once online.
+ */
+export async function getLocalDashboardAnalytics() {
+  const [patients, visits, reminders, reportItems] = await Promise.all([
+    db.patients.toArray(),
+    db.visits.toArray(),
+    db.reminders.toArray(),
+    db.reportItems.toArray(),
+  ]);
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const now      = new Date();
+
+  // ── STATS ──────────────────────────────────────────────────────────────────
+  const totalPatients = patients.length;
+
+  const todayVisitsList = visits.filter(v => {
+    const d = v.visit_date || v.visit_datetime || v.date || '';
+    return d.slice(0, 10) === todayStr;
+  });
+  const todayCompleted = todayVisitsList.filter(v =>
+    (v.status || '').toUpperCase() === 'COMPLETED'
+  );
+  const todayPending = todayVisitsList.filter(v =>
+    (v.status || '').toUpperCase() === 'PENDING'
+  );
+
+  const allCompleted = visits.filter(v =>
+    (v.status || '').toUpperCase() === 'COMPLETED'
+  );
+
+  const followupsDue = reminders.filter(r => {
+    const due = r.due_date || r.visit_date || '';
+    return (r.status || '').toLowerCase() !== 'completed' && due <= todayStr;
+  });
+
+  const highRiskPatients = patients.filter(p =>
+    (p.risk_level || '').toLowerCase() === 'high'
+  );
+
+  const stats = {
+    totalPatients,
+    todayVisits:          todayCompleted.length,
+    pendingVisitsToday:   todayPending.length,
+    followUpsDue:         followupsDue.length,
+    overdueFollowUps:     followupsDue.filter(r => (r.due_date || r.visit_date || '') < todayStr).length,
+    highRiskCount:        highRiskPatients.length,
+    visitsCompletedCount: allCompleted.length,
+    // Legacy compat
+    highRisk:       highRiskPatients.length,
+    remindersCount: todayPending.length + followupsDue.length,
+  };
+
+  // ── PATIENT DISTRIBUTION ───────────────────────────────────────────────────
+  let general = 0, maternal = 0, child = 0, chronic = 0, highRisk = 0;
+  for (const p of patients) {
+    const cat = (p.category || 'General').trim();
+    if (cat === 'Pregnancy' || cat === 'Maternal') maternal++;
+    else if (p.age != null && Number(p.age) <= 12) child++;
+    else if (cat === 'Chronic' || cat === 'NCD') chronic++;
+    else if ((p.risk_level || '').toLowerCase() === 'high') highRisk++;
+    else general++;
+  }
+  const distribution = { general, maternal, child, chronic, highRisk };
+
+  // ── TOP HEALTH CONDITIONS ──────────────────────────────────────────────────
+  const conditionMap = {};
+  for (const p of patients) {
+    const addCondition = (name) => {
+      const k = name.trim();
+      if (!k) return;
+      conditionMap[k] = (conditionMap[k] || 0) + 1;
+    };
+    if (p.disease) addCondition(p.disease);
+    if (p.risk_flags && typeof p.risk_flags === 'object') {
+      for (const [flag, val] of Object.entries(p.risk_flags)) {
+        if (val) addCondition(flag.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()));
+      }
+    }
+  }
+  const conditions = Object.entries(conditionMap)
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
+
+  // ── MONTHLY TREND (last 6 months) ─────────────────────────────────────────
+  const monthlyMap = {};
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(1);
+    d.setMonth(d.getMonth() - i);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const label = d.toLocaleString('default', { month: 'short' });
+    monthlyMap[key] = { month: label, patientsAdded: 0, visitsCompleted: 0 };
+  }
+  for (const p of patients) {
+    const ts = p.createdAt || p.created_at || '';
+    const key = ts.slice(0, 7);
+    if (monthlyMap[key]) monthlyMap[key].patientsAdded++;
+  }
+  for (const v of allCompleted) {
+    const ts = v.completedAt || v.completed_at || v.visit_date || v.visit_datetime || '';
+    const key = ts.slice(0, 7);
+    if (monthlyMap[key]) monthlyMap[key].visitsCompleted++;
+  }
+  const monthlyTrend = Object.values(monthlyMap);
+
+  // ── RECENT ACTIVITIES ──────────────────────────────────────────────────────
+  const activityList = [];
+  const patientById  = Object.fromEntries(patients.map(p => [p.local_id, p]));
+
+  for (const p of patients) {
+    activityList.push({
+      type:      'patient_registered',
+      title:     'New patient registered',
+      detail:    `${p.name || 'Patient'} • ${p.village || 'Village'}`,
+      timestamp: p.createdAt || p.created_at || '',
+    });
+  }
+  for (const v of visits) {
+    if ((v.status || '').toUpperCase() === 'COMPLETED') {
+      const pat = patientById[v.patientId] || patientById[v.patient_id];
+      activityList.push({
+        type:      'visit_completed',
+        title:     'Visit completed',
+        detail:    `${pat?.name || 'Patient'} • ${v.visit_type || 'General Checkup'}`,
+        timestamp: v.completedAt || v.completed_at || v.visit_date || '',
+      });
+    }
+  }
+  for (const ri of reportItems) {
+    activityList.push({
+      type:      'report_added',
+      title:     'Health record updated',
+      detail:    ri.title || 'Report',
+      timestamp: ri.createdAt || ri.created_at || '',
+    });
+  }
+
+  activityList.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
+  const recentActivities = activityList.slice(0, 8);
+
+  // ── TODAY'S SCHEDULE ───────────────────────────────────────────────────────
+  const scheduleItems = [];
+  for (const v of todayVisitsList) {
+    const pat = patientById[v.patientId] || patientById[v.patient_id];
+    const dt  = v.visit_date || v.visit_datetime || '';
+    const time = dt.length >= 16
+      ? new Date(dt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      : '09:00 AM';
+    const isCompleted = (v.status || '').toUpperCase() === 'COMPLETED';
+    const isMissed    = !isCompleted && dt < now.toISOString();
+    scheduleItems.push({
+      time,
+      sortKey:  dt,
+      title:    v.visit_type || 'Home Visit',
+      place:    `${pat?.name || 'Patient'}${pat?.village ? ' • ' + pat.village : ''}`,
+      status:   isCompleted ? 'completed' : isMissed ? 'missed' : 'upcoming',
+    });
+  }
+  for (const r of reminders) {
+    const due = r.due_date || r.visit_date || '';
+    if (due.slice(0, 10) === todayStr) {
+      const pat = patientById[r.patientId] || patientById[r.patient_id];
+      scheduleItems.push({
+        time:    '09:00 AM',
+        sortKey: due + 'T09:00:00',
+        title:   r.reminder_type || r.type || 'Follow-up',
+        place:   `${pat?.name || 'Patient'}${pat?.village ? ' • ' + pat.village : ''}`,
+        status:  (r.status || '').toLowerCase() === 'completed' ? 'completed' : 'upcoming',
+      });
+    }
+  }
+  scheduleItems.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+  const todaySchedule = scheduleItems.slice(0, 8);
+
+  // ── ALERTS ─────────────────────────────────────────────────────────────────
+  const alerts = [];
+  if (highRiskPatients.length > 0) {
+    alerts.push({
+      type:    'high_risk',
+      count:   highRiskPatients.length,
+      message: `${highRiskPatients.length} high risk patient${highRiskPatients.length > 1 ? 's' : ''} need attention`,
+    });
+  }
+  const overdue = followupsDue.filter(r => (r.due_date || r.visit_date || '') < todayStr);
+  if (overdue.length > 0) {
+    alerts.push({
+      type:    'overdue_followup',
+      count:   overdue.length,
+      message: `${overdue.length} follow-up${overdue.length > 1 ? 's are' : ' is'} overdue`,
+    });
+  }
+  if (followupsDue.length > 0) {
+    alerts.push({
+      type:    'followup_due',
+      count:   followupsDue.length,
+      message: `${followupsDue.length} follow-up${followupsDue.length > 1 ? 's' : ''} due today`,
+    });
+  }
+
+  return { stats, distribution, conditions, monthlyTrend, recentActivities, todaySchedule, alerts };
+}
+
+/**
+ * Legacy shim — returns the minimal stat fields the old dashboard used.
+ */
+export async function getLocalDashboardStats() {
+  const data = await getLocalDashboardAnalytics();
+  return data.stats;
+}
+
