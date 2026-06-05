@@ -968,8 +968,205 @@ export function resetSyncEngine() {
   });
 }
 
+// ── Manual Rescue Sync functions ──────────────────────────────────────────────
+async function runWithLock(callback) {
+  if (_syncLock) {
+    throw new Error('locked');
+  }
+  if (navigator.locks) {
+    let locked = false;
+    const result = await navigator.locks.request('ashakiran_sync_mutex', { ifAvailable: true }, async (lock) => {
+      if (!lock) {
+        locked = true;
+        return;
+      }
+      _syncLock = true;
+      try {
+        return await callback();
+      } finally {
+        _syncLock = false;
+      }
+    });
+    if (locked) {
+      throw new Error('locked');
+    }
+    return result;
+  } else {
+    _syncLock = true;
+    try {
+      return await callback();
+    } finally {
+      _syncLock = false;
+    }
+  }
+}
+
+export async function manualSyncPatients() {
+  const token = localStorage.getItem('token');
+  if (!token) {
+    return { status: 'unauthorized', message: 'User not authenticated' };
+  }
+
+  const online = await checkHealth();
+  if (!online) {
+    return { status: 'offline', message: "You're offline. Connect to internet to sync pending data." };
+  }
+
+  const pendingBefore = await getPendingPatients();
+  const pendingCount = pendingBefore.length;
+  if (pendingCount === 0) {
+    return { status: 'nothing-to-sync', message: 'All patient records already synced' };
+  }
+
+  try {
+    const res = await runWithLock(async () => {
+      await _reconcileStaleRecords();
+      await _syncPatients();
+      await _pullFreshData();
+      return true;
+    });
+
+    if (res === undefined) {
+      return { status: 'locked', message: 'Sync already in progress.' };
+    }
+
+    const pendingAfter = await getPendingPatients();
+    const syncedCount = pendingCount - pendingAfter.length;
+    const failedCount = pendingAfter.length;
+
+    if (syncedCount > 0 && failedCount === 0) {
+      localStorage.setItem('last_sync_patients', Date.now().toString());
+      return { status: 'success', synced: syncedCount, failed: failedCount, message: `${syncedCount} patient record${syncedCount > 1 ? 's' : ''} synced successfully` };
+    } else if (syncedCount > 0 && failedCount > 0) {
+      localStorage.setItem('last_sync_patients', Date.now().toString());
+      return { status: 'partial', synced: syncedCount, failed: failedCount, message: `${syncedCount} synced, ${failedCount} failed. Retry again.` };
+    } else {
+      return { status: 'failed', synced: 0, failed: failedCount, message: `Sync failed for ${failedCount} patient record${failedCount > 1 ? 's' : ''}. Retry again.` };
+    }
+  } catch (err) {
+    if (err.message === 'locked') {
+      return { status: 'locked', message: 'Sync already in progress.' };
+    }
+    return { status: 'failed', message: `Sync failed: ${err.message}` };
+  }
+}
+
+export async function manualSyncReports() {
+  const token = localStorage.getItem('token');
+  if (!token) {
+    return { status: 'unauthorized', message: 'User not authenticated' };
+  }
+
+  const online = await checkHealth();
+  if (!online) {
+    return { status: 'offline', message: "You're offline. Connect to internet to sync pending data." };
+  }
+
+  const pendingVisits = await getPendingVisits();
+  const pendingCompletedVisits = pendingVisits.filter(v => v.status === 'COMPLETED');
+  const pendingReportItems = await getPendingReportItems();
+  const pendingCount = pendingCompletedVisits.length + pendingReportItems.length;
+
+  if (pendingCount === 0) {
+    return { status: 'nothing-to-sync', message: 'All records already synced' };
+  }
+
+  try {
+    const res = await runWithLock(async () => {
+      await _reconcileStaleRecords();
+      await _syncPatients();
+      await _syncVisits();
+      await _syncCompletedVisits();
+      await _syncReportItems();
+      await _pullFreshData();
+      return true;
+    });
+
+    if (res === undefined) {
+      return { status: 'locked', message: 'Sync already in progress.' };
+    }
+
+    const pendingVisitsAfter = await getPendingVisits();
+    const pendingCompletedVisitsAfter = pendingVisitsAfter.filter(v => v.status === 'COMPLETED');
+    const pendingReportItemsAfter = await getPendingReportItems();
+    const pendingCountAfter = pendingCompletedVisitsAfter.length + pendingReportItemsAfter.length;
+
+    const syncedCount = pendingCount - pendingCountAfter;
+    const failedCount = pendingCountAfter;
+
+    if (syncedCount > 0 && failedCount === 0) {
+      localStorage.setItem('last_sync_records', Date.now().toString());
+      return { status: 'success', synced: syncedCount, failed: failedCount, message: `${syncedCount} record${syncedCount > 1 ? 's' : ''} synced successfully` };
+    } else if (syncedCount > 0 && failedCount > 0) {
+      localStorage.setItem('last_sync_records', Date.now().toString());
+      return { status: 'partial', synced: syncedCount, failed: failedCount, message: `${syncedCount} synced, ${failedCount} failed. Retry again.` };
+    } else {
+      return { status: 'failed', synced: 0, failed: failedCount, message: `Sync failed for ${failedCount} record${failedCount > 1 ? 's' : ''}. Retry again.` };
+    }
+  } catch (err) {
+    if (err.message === 'locked') {
+      return { status: 'locked', message: 'Sync already in progress.' };
+    }
+    return { status: 'failed', message: `Sync failed: ${err.message}` };
+  }
+}
+
+export async function manualSyncReminders() {
+  const token = localStorage.getItem('token');
+  if (!token) {
+    return { status: 'unauthorized', message: 'User not authenticated' };
+  }
+
+  const online = await checkHealth();
+  if (!online) {
+    return { status: 'offline', message: "You're offline. Connect to internet to sync pending data." };
+  }
+
+  const pendingReminders = await db.reminders.where('syncStatus').anyOf([SYNC.PENDING, SYNC.RETRYING]).toArray();
+  const pendingCount = pendingReminders.length;
+
+  if (pendingCount === 0) {
+    return { status: 'nothing-to-sync', message: 'All reminders already synced' };
+  }
+
+  try {
+    const res = await runWithLock(async () => {
+      await _reconcileStaleRecords();
+      await _syncPatients();
+      await _syncVisits();
+      await _pullFreshData();
+      return true;
+    });
+
+    if (res === undefined) {
+      return { status: 'locked', message: 'Sync already in progress.' };
+    }
+
+    const pendingRemindersAfter = await db.reminders.where('syncStatus').anyOf([SYNC.PENDING, SYNC.RETRYING]).toArray();
+    const pendingCountAfter = pendingRemindersAfter.length;
+
+    const syncedCount = pendingCount - pendingCountAfter;
+    const failedCount = pendingCountAfter;
+
+    if (syncedCount > 0 && failedCount === 0) {
+      localStorage.setItem('last_sync_reminders', Date.now().toString());
+      return { status: 'success', synced: syncedCount, failed: failedCount, message: `${syncedCount} reminder${syncedCount > 1 ? 's' : ''} synced successfully` };
+    } else if (syncedCount > 0 && failedCount > 0) {
+      localStorage.setItem('last_sync_reminders', Date.now().toString());
+      return { status: 'partial', synced: syncedCount, failed: failedCount, message: `${syncedCount} synced, ${failedCount} failed. Retry again.` };
+    } else {
+      return { status: 'failed', synced: 0, failed: failedCount, message: `Sync failed for ${failedCount} reminder${failedCount > 1 ? 's' : ''}. Retry again.` };
+    }
+  } catch (err) {
+    if (err.message === 'locked') {
+      return { status: 'locked', message: 'Sync already in progress.' };
+    }
+    return { status: 'failed', message: `Sync failed: ${err.message}` };
+  }
+}
+
 // ── Debug / diagnostic exports ────────────────────────────────────────────────
-/** Returns the current engine state (for the SyncDebugPanel). */
+/** Returns the current engine state. */
 export function getSyncEngineState() {
   return {
     syncLock:       _syncLock,

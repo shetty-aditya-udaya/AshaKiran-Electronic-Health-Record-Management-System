@@ -1354,7 +1354,7 @@ export async function getPendingCount() {
 
 /**
  * Full diagnostic snapshot of all IDB stores.
- * Called by the SyncDebugPanel to render the debug UI.
+ * Used for internal sync logging diagnostics.
  */
 export async function getFullDiagnostics() {
   const uid = getCurrentUserId();

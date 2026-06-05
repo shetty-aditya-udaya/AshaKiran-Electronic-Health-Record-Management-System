@@ -13,6 +13,7 @@ import { useReports } from '../hooks/useReports';
 import { useConnection } from '../context/ConnectionContext';
 import BrandLogo from '../components/BrandLogo';
 import { useTranslation } from 'react-i18next';
+import { manualSyncReports } from '../lib/syncService';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -109,6 +110,34 @@ export default function Reports() {
   const navigate = useNavigate();
   const { folders, loading, syncing, error, fetchFromServer } = useReports();
   const { isServerReachable } = useConnection();
+
+  const [lastSyncText, setLastSyncText] = useState('');
+  const [manualSyncing, setManualSyncing] = useState(false);
+
+  useEffect(() => {
+    const updateText = () => {
+      const ts = localStorage.getItem('last_sync_records');
+      if (!ts) {
+        setLastSyncText('');
+        return;
+      }
+      const diff = Date.now() - Number(ts);
+      if (diff < 60_000) {
+        setLastSyncText('Last synced just now');
+      } else {
+        const mins = Math.floor(diff / 60_000);
+        if (mins < 60) {
+          setLastSyncText(`Last synced ${mins} min${mins > 1 ? 's' : ''} ago`);
+        } else {
+          const hours = Math.floor(mins / 60);
+          setLastSyncText(`Last synced ${hours} hour${hours > 1 ? 's' : ''} ago`);
+        }
+      }
+    };
+    updateText();
+    const interval = setInterval(updateText, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   const [searchTerm, setSearchTerm]         = useState('');
   const [activeCategory, setActiveCategory] = useState('All');
@@ -378,13 +407,43 @@ export default function Reports() {
               {t(cat.toLowerCase(), cat)}
             </button>
           ))}
-          <button
-            onClick={() => fetchFromServer()}
-            aria-label="Refresh reports"
-            className="p-2.5 rounded-full border border-outline-variant/30 text-primary hover:bg-primary-container/20 transition-all active:scale-95"
-          >
-            <RefreshCw size={16} className={syncing ? 'animate-spin' : ''} />
-          </button>
+          <div className="flex flex-col items-end gap-1 ml-2">
+            <button
+              id="btn-sync-records"
+              disabled={manualSyncing}
+              onClick={async () => {
+                setManualSyncing(true);
+                const toastId = toast.loading('Syncing records...');
+                try {
+                  const result = await manualSyncReports();
+                  if (result.status === 'success') {
+                    toast.success(result.message, { id: toastId });
+                    await fetchFromServer();
+                  } else if (result.status === 'partial') {
+                    toast.error(result.message, { id: toastId });
+                    await fetchFromServer();
+                  } else if (result.status === 'nothing-to-sync') {
+                    toast.success(result.message, { id: toastId });
+                  } else if (result.status === 'offline') {
+                    toast.error(result.message, { id: toastId });
+                  } else {
+                    toast.error(result.message || 'Sync failed', { id: toastId });
+                  }
+                } catch (err) {
+                  toast.error(`Sync failed: ${err.message}`, { id: toastId });
+                } finally {
+                  setManualSyncing(false);
+                }
+              }}
+              className="flex items-center gap-2 bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200/50 px-5 py-2.5 rounded-xl font-body font-semibold transition-all disabled:opacity-60 disabled:cursor-not-allowed active:scale-95"
+            >
+              <span className={`material-symbols-outlined text-[20px] ${manualSyncing ? 'animate-spin' : ''}`}>sync</span>
+              <span>{manualSyncing ? 'Syncing Records...' : 'Sync Records'}</span>
+            </button>
+            {lastSyncText && (
+              <span className="text-[10px] text-slate-400 font-medium">{lastSyncText}</span>
+            )}
+          </div>
           <button
             onClick={handleExport}
             className="flex items-center gap-2 text-primary font-body font-semibold hover:bg-primary-container/20 px-4 py-2 rounded-lg transition-all ml-2"

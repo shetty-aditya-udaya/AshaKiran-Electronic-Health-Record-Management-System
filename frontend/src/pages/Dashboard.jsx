@@ -443,21 +443,6 @@ export default function Dashboard() {
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
-            {/* Sync status pill */}
-            <div className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full ${
-              serverStatus === 'online'   ? 'bg-emerald-50 text-emerald-700' :
-              serverStatus === 'checking' ? 'bg-sky-50 text-sky-700' :
-                                           'bg-amber-50 text-amber-700'
-            }`}>
-              {serverStatus === 'online' ? (
-                <><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />{dataSource === 'server' ? '● Server Online · All Synced' : '● Server Online'}</>
-              ) : serverStatus === 'checking' ? (
-                <><RefreshCw size={10} className="animate-spin" /> Checking…</>
-              ) : (
-                <><span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Offline · Local Data</>
-              )}
-            </div>
-
             <button onClick={handleRefresh}
               className="p-2 rounded-lg bg-white border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-800 transition-all"
               title="Refresh dashboard">

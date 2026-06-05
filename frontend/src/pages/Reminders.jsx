@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import { useReminders } from '../hooks/useReminders';
 import { useDeleteVisit } from '../hooks/useDeleteVisit';
 import DeleteVisitModal from '../components/DeleteVisitModal';
 import { SYNC } from '../lib/db';
 import BrandLogo from '../components/BrandLogo';
+import { manualSyncReminders } from '../lib/syncService';
 
 // urgency-based visit type → material symbol
 function typeIcon(type) {
@@ -262,6 +264,34 @@ export default function Reminders({ t = (k, def) => def }) {
   const navigate = useNavigate();
   const { reminders, stats, loading, refresh, fetchFromServer } = useReminders();
 
+  const [lastSyncText, setLastSyncText] = useState('');
+  const [manualSyncing, setManualSyncing] = useState(false);
+
+  useEffect(() => {
+    const updateText = () => {
+      const ts = localStorage.getItem('last_sync_reminders');
+      if (!ts) {
+        setLastSyncText('');
+        return;
+      }
+      const diff = Date.now() - Number(ts);
+      if (diff < 60_000) {
+        setLastSyncText('Last synced just now');
+      } else {
+        const mins = Math.floor(diff / 60_000);
+        if (mins < 60) {
+          setLastSyncText(`Last synced ${mins} min${mins > 1 ? 's' : ''} ago`);
+        } else {
+          const hours = Math.floor(mins / 60);
+          setLastSyncText(`Last synced ${hours} hour${hours > 1 ? 's' : ''} ago`);
+        }
+      }
+    };
+    updateText();
+    const interval = setInterval(updateText, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
   const [activeTab, setActiveTab] = useState('pending');
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState('all'); // 'all', 'today', 'yesterday', 'this-week', 'this-month', 'custom'
@@ -362,17 +392,43 @@ export default function Reminders({ t = (k, def) => def }) {
         </div>
 
         {/* Sync/Refresh Action */}
-        <button
-          onClick={async () => {
-            await fetchFromServer();
-          }}
-          aria-label="Sync Reminders"
-          title="Sync Reminders"
-          className="btn-primary self-start md:self-auto flex items-center justify-center gap-2"
-        >
-          <span className="material-symbols-outlined text-lg">sync</span>
-          Sync Reminders
-        </button>
+        <div className="flex flex-col items-end gap-1 self-start md:self-auto">
+          <button
+            id="btn-sync-reminders"
+            disabled={manualSyncing}
+            onClick={async () => {
+              setManualSyncing(true);
+              const toastId = toast.loading('Syncing reminders...');
+              try {
+                const result = await manualSyncReminders();
+                if (result.status === 'success') {
+                  toast.success(result.message, { id: toastId });
+                  await fetchFromServer();
+                } else if (result.status === 'partial') {
+                  toast.error(result.message, { id: toastId });
+                  await fetchFromServer();
+                } else if (result.status === 'nothing-to-sync') {
+                  toast.success(result.message, { id: toastId });
+                } else if (result.status === 'offline') {
+                  toast.error(result.message, { id: toastId });
+                } else {
+                  toast.error(result.message || 'Sync failed', { id: toastId });
+                }
+              } catch (err) {
+                toast.error(`Sync failed: ${err.message}`, { id: toastId });
+              } finally {
+                setManualSyncing(false);
+              }
+            }}
+            className="flex items-center gap-2 bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200/50 px-5 py-2.5 rounded-xl font-body font-semibold transition-all disabled:opacity-60 disabled:cursor-not-allowed active:scale-95"
+          >
+            <span className={`material-symbols-outlined text-[20px] ${manualSyncing ? 'animate-spin' : ''}`}>sync</span>
+            <span>{manualSyncing ? 'Syncing Reminders...' : 'Sync Reminders'}</span>
+          </button>
+          {lastSyncText && (
+            <span className="text-[10px] text-slate-400 font-medium self-end">{lastSyncText}</span>
+          )}
+        </div>
       </div>
 
       {/* ── Stats Bar ─────────────────────────────────────────────────────── */}

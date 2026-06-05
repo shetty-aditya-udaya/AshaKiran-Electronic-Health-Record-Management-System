@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { API_BASE_URL } from '../config';
-import SyncDebugPanel from '../components/SyncDebugPanel';
 
 // ─── completion calculator ────────────────────────────────────────────────────
 const TRACKED_FIELDS = [
@@ -98,7 +97,6 @@ export default function Profile({ onProfileUpdate }) {
   const [avatar, setAvatar]         = useState(storedUser.avatar || null);
   const [saving, setSaving]         = useState(false);
   const [editMode, setEditMode]     = useState(false);
-  const [showDebug, setShowDebug]   = useState(false);
 
   const completion = calcCompletion(form);
   const age        = calcAge(form.dob);
@@ -406,15 +404,7 @@ export default function Profile({ onProfileUpdate }) {
       <div className="bg-white rounded-2xl shadow-[0_2px_16px_rgba(0,0,0,0.06)] p-6 space-y-3">
         <h2 className="font-headline font-bold text-on-surface text-base mb-2">Account</h2>
 
-        {/* Sync Debug Button */}
-        <button
-          onClick={() => setShowDebug(true)}
-          className="w-full flex items-center gap-3 px-4 py-3 bg-violet-50 text-violet-700 rounded-xl font-body font-semibold text-sm hover:bg-violet-100 transition-all active:scale-[0.98]"
-        >
-          <span className="material-symbols-outlined text-[20px]">bug_report</span>
-          Sync Debug
-          <span className="ml-auto text-xs opacity-60 font-normal">Developer Tool</span>
-        </button>
+
 
         <button
           onClick={() => {
@@ -430,8 +420,7 @@ export default function Profile({ onProfileUpdate }) {
         </button>
       </div>
 
-      {/* ── Sync Debug Panel ─────────────────────────────────────────────────── */}
-      {showDebug && <SyncDebugPanel onClose={() => setShowDebug(false)} />}
+
 
       {/* ── Sticky save bar (edit mode only) ────────────────────────────────── */}
       {editMode && (

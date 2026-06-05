@@ -10,6 +10,7 @@ import { SYNC } from '../lib/db';
 import BrandLogo from '../components/BrandLogo';
 import { useTranslation } from 'react-i18next';
 import { useConnection } from '../context/ConnectionContext';
+import { manualSyncPatients } from '../lib/syncService';
 
 const PAGE_SIZE = 9;
 
@@ -36,6 +37,34 @@ export default function PatientList({ onOpenAddVisit }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { isServerReachable } = useConnection();
+
+  const [lastSyncText, setLastSyncText] = useState('');
+  const [manualSyncing, setManualSyncing] = useState(false);
+
+  useEffect(() => {
+    const updateText = () => {
+      const ts = localStorage.getItem('last_sync_patients');
+      if (!ts) {
+        setLastSyncText('');
+        return;
+      }
+      const diff = Date.now() - Number(ts);
+      if (diff < 60_000) {
+        setLastSyncText('Last synced just now');
+      } else {
+        const mins = Math.floor(diff / 60_000);
+        if (mins < 60) {
+          setLastSyncText(`Last synced ${mins} min${mins > 1 ? 's' : ''} ago`);
+        } else {
+          const hours = Math.floor(mins / 60);
+          setLastSyncText(`Last synced ${hours} hour${hours > 1 ? 's' : ''} ago`);
+        }
+      }
+    };
+    updateText();
+    const interval = setInterval(updateText, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   // ── Offline-first data ─────────────────────────────────────────────────────
   const {
@@ -221,6 +250,45 @@ export default function PatientList({ onOpenAddVisit }) {
               placeholder={t('searchPlaceholder', 'Search by name, ID or village…')}
               className="pl-10 pr-4 py-2.5 bg-white border border-outline-variant/30 rounded-xl focus:ring-2 focus:ring-primary/20 text-sm w-64 md:w-80 transition-all outline-none font-body"
             />
+          </div>
+
+          {/* Sync Patients */}
+          <div className="flex flex-col items-end gap-1">
+            <button
+              id="btn-sync-patients"
+              disabled={manualSyncing}
+              onClick={async () => {
+                setManualSyncing(true);
+                const toastId = toast.loading('Syncing patients...');
+                try {
+                  const result = await manualSyncPatients();
+                  if (result.status === 'success') {
+                    toast.success(result.message, { id: toastId });
+                    await fetchFromServer();
+                  } else if (result.status === 'partial') {
+                    toast.error(result.message, { id: toastId });
+                    await fetchFromServer();
+                  } else if (result.status === 'nothing-to-sync') {
+                    toast.success(result.message, { id: toastId });
+                  } else if (result.status === 'offline') {
+                    toast.error(result.message, { id: toastId });
+                  } else {
+                    toast.error(result.message || 'Sync failed', { id: toastId });
+                  }
+                } catch (err) {
+                  toast.error(`Sync failed: ${err.message}`, { id: toastId });
+                } finally {
+                  setManualSyncing(false);
+                }
+              }}
+              className="flex items-center gap-2 bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200/50 px-5 py-2.5 rounded-xl font-body font-semibold transition-all disabled:opacity-60 disabled:cursor-not-allowed active:scale-95"
+            >
+              <span className={`material-symbols-outlined text-[20px] ${manualSyncing ? 'animate-spin' : ''}`}>sync</span>
+              <span>{manualSyncing ? 'Syncing Patients...' : 'Sync Patients'}</span>
+            </button>
+            {lastSyncText && (
+              <span className="text-[10px] text-slate-400 font-medium">{lastSyncText}</span>
+            )}
           </div>
 
           {/* Add patient */}
