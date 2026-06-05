@@ -310,7 +310,8 @@ export default function Dashboard() {
   }, []);
 
   // ── Local IndexedDB calculation (Single Source of Truth) ──────────────────
-  const fetchAnalytics = useCallback(async () => {
+  const fetchAnalytics = useCallback(async (source = 'direct') => {
+    console.log(`[Dashboard DEBUG] fetchAnalytics called from source: ${source}`);
     try {
       const local = await getLocalDashboardAnalytics();
       setAnalytics(local);
@@ -323,36 +324,36 @@ export default function Dashboard() {
     }
   }, []);
 
-  useEffect(() => { fetchAnalytics(); }, [fetchAnalytics]);
+  useEffect(() => { fetchAnalytics('mount'); }, [fetchAnalytics]);
 
   // Refresh on local DB writes and vital patient/visit mutations
   useEffect(() => {
-    const h = () => fetchAnalytics();
-    window.addEventListener('local-data-written', h);
-    window.addEventListener('visit-added', h);
-    window.addEventListener('visit-completed', h);
-    window.addEventListener('visit-deleted', h);
-    window.addEventListener('patient-added', h);
-    window.addEventListener('patient-deleted', h);
-    window.addEventListener('user-logged-in', h);
-    window.addEventListener('user-logged-out', h);
+    const handleEvent = (e) => fetchAnalytics(`event:${e.type}`);
+    window.addEventListener('local-data-written', handleEvent);
+    window.addEventListener('visit-added', handleEvent);
+    window.addEventListener('visit-completed', handleEvent);
+    window.addEventListener('visit-deleted', handleEvent);
+    window.addEventListener('patient-added', handleEvent);
+    window.addEventListener('patient-deleted', handleEvent);
+    window.addEventListener('user-logged-in', handleEvent);
+    window.addEventListener('user-logged-out', handleEvent);
     return () => {
-      window.removeEventListener('local-data-written', h);
-      window.removeEventListener('visit-added', h);
-      window.removeEventListener('visit-completed', h);
-      window.removeEventListener('visit-deleted', h);
-      window.removeEventListener('patient-added', h);
-      window.removeEventListener('patient-deleted', h);
-      window.removeEventListener('user-logged-in', h);
-      window.removeEventListener('user-logged-out', h);
+      window.removeEventListener('local-data-written', handleEvent);
+      window.removeEventListener('visit-added', handleEvent);
+      window.removeEventListener('visit-completed', handleEvent);
+      window.removeEventListener('visit-deleted', handleEvent);
+      window.removeEventListener('patient-added', handleEvent);
+      window.removeEventListener('patient-deleted', handleEvent);
+      window.removeEventListener('user-logged-in', handleEvent);
+      window.removeEventListener('user-logged-out', handleEvent);
     };
   }, [fetchAnalytics]);
 
   // Auto-refresh when server comes back online
   useEffect(() => {
-    const h = () => { if (isServerReachable) fetchAnalytics(); };
-    window.addEventListener('server-online', h);
-    return () => window.removeEventListener('server-online', h);
+    const handleServerOnline = () => { if (isServerReachable) fetchAnalytics('server-online-event'); };
+    window.addEventListener('server-online', handleServerOnline);
+    return () => window.removeEventListener('server-online', handleServerOnline);
   }, [fetchAnalytics, isServerReachable]);
 
   const handleRefresh = async () => {
@@ -364,7 +365,7 @@ export default function Dashboard() {
     } catch (err) {
       console.warn('[Dashboard] Refresh sync failed:', err);
     }
-    await fetchAnalytics();
+    await fetchAnalytics('manual-refresh');
     setTimeout(() => setRefreshing(false), 700);
   };
 

@@ -38,10 +38,9 @@ import { api, NetworkError, checkHealth, ApiError } from '../utils/apiClient';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const MAX_ITEM_RETRIES  = 5;
-// Reduced from 15s to 8s for faster reconnect response.
-// After an offline period, the user waits at most ~8s before sync begins.
-const HEARTBEAT_MS      = 8_000;
+const HEARTBEAT_MS      = 20_000;
 const SYNCED_DISPLAY_MS = 3_000;
+
 // Consecutive health-check failures before we flip _wasOnline to false.
 // This prevents a single slow response flipping us offline and triggering
 // a reconnect sync on the very next heartbeat.
@@ -708,6 +707,7 @@ async function _syncCompletedVisits() {
 // _syncCompletedVisits pass (medical data + images) before being marked SYNCED.
 async function _reconcileStaleRecords() {
   log.debug('Reconciling stale records with server state…');
+  let hasChanges = false;
   try {
     const [patientsRes, remindersRes] = await Promise.allSettled([
       api.get('/api/patients'),
@@ -720,6 +720,7 @@ async function _reconcileStaleRecords() {
         : (patientsRes.value.patients || []);
       const records = await bulkUpsertPatients(arr);
       if (records.length > 0) {
+        hasChanges = true;
         await Promise.all(records.map(p => createReportFolder(p)));
       }
       log.debug(`Reconcile: processed ${arr.length} patient(s) from server`);
@@ -727,7 +728,10 @@ async function _reconcileStaleRecords() {
 
     if (remindersRes.status === 'fulfilled' && remindersRes.value) {
       const arr = Array.isArray(remindersRes.value) ? remindersRes.value : [];
-      await bulkUpsertReminders(arr);
+      const remindersChanged = await bulkUpsertReminders(arr);
+      if (remindersChanged) {
+        hasChanges = true;
+      }
       log.debug(`Reconcile: processed ${arr.length} reminder(s) from server`);
 
       const reminders = Array.isArray(remindersRes.value) ? remindersRes.value : [];
@@ -750,12 +754,20 @@ async function _reconcileStaleRecords() {
         );
         if (serverMatch) {
           log.debug(`Reconcile: visit ${localVisit.local_id} confirmed on server → SYNCED`);
-          await markVisitSynced(localVisit.local_id, serverMatch.id);
+          if (localVisit.syncStatus !== SYNC.SYNCED) {
+            await markVisitSynced(localVisit.local_id, serverMatch.id);
+            hasChanges = true;
+          }
         }
       }
     }
 
-    window.dispatchEvent(new CustomEvent('local-data-written'));
+    if (hasChanges) {
+      log.info('Reconcile detected changes — dispatching local-data-written');
+      window.dispatchEvent(new CustomEvent('local-data-written'));
+    } else {
+      log.debug('Reconcile complete — no changes detected');
+    }
   } catch (err) {
     if (err instanceof NetworkError) {
       log.warn('Reconcile skipped — network error:', err.message);
@@ -768,6 +780,7 @@ async function _reconcileStaleRecords() {
 // ── Pull fresh server data ────────────────────────────────────────────
 async function _pullFreshData() {
   log.debug('Pulling fresh data from server');
+  let hasChanges = false;
   const [patientsRes, remindersRes, foldersRes] = await Promise.allSettled([
     api.get('/api/patients'),
     api.get('/api/reminders/all'),
@@ -779,18 +792,23 @@ async function _pullFreshData() {
       ? patientsRes.value
       : (patientsRes.value.patients || []);
     const records = await bulkUpsertPatients(arr);
-    await Promise.all(records.map(p => createReportFolder(p)));
+    if (records.length > 0) {
+      hasChanges = true;
+      await Promise.all(records.map(p => createReportFolder(p)));
+    }
     log.debug(`Pulled ${arr.length} patient(s) from server`);
 
     // Fetch individual report items & visits for all retrieved patients
     const patientIds = arr.map(p => p.id).filter(Boolean);
     if (patientIds.length > 0) {
       log.debug(`Pulling reports/visits for ${patientIds.length} patients…`);
-      await Promise.allSettled(patientIds.map(async (pid) => {
+      const results = await Promise.allSettled(patientIds.map(async (pid) => {
+        let patientChanged = false;
         try {
           const res = await api.get(`/api/reports/patient/${pid}`);
           if (res?.reports?.length) {
-            await bulkUpsertReportItems(res.reports, pid);
+            const reportsChanged = await bulkUpsertReportItems(res.reports, pid);
+            if (reportsChanged) patientChanged = true;
           }
           if (res?.visits?.length) {
             const tagged = res.visits.map(v => ({
@@ -798,29 +816,44 @@ async function _pullFreshData() {
               patientId:  String(pid),
               visit_date: v.visit_date || v.date,
             }));
-            await bulkUpsertVisits(tagged);
+            const visitsChanged = await bulkUpsertVisits(tagged);
+            if (visitsChanged) patientChanged = true;
           }
         } catch (e) {
           log.warn(`Failed to pull report items for patient ${pid}:`, e.message);
         }
+        return patientChanged;
       }));
+      if (results.some(r => r.status === 'fulfilled' && r.value)) {
+        hasChanges = true;
+      }
     }
   }
 
   if (remindersRes.status === 'fulfilled' && remindersRes.value) {
     const arr = Array.isArray(remindersRes.value) ? remindersRes.value : [];
-    await bulkUpsertReminders(arr);
+    const remindersChanged = await bulkUpsertReminders(arr);
+    if (remindersChanged) {
+      hasChanges = true;
+    }
     log.debug(`Pulled ${arr.length} reminder(s) from server`);
   }
 
   if (foldersRes.status === 'fulfilled' && foldersRes.value) {
     const arr = Array.isArray(foldersRes.value) ? foldersRes.value : [];
-    await bulkUpsertReportFolders(arr);
+    const foldersChanged = await bulkUpsertReportFolders(arr);
+    if (foldersChanged) {
+      hasChanges = true;
+    }
     log.debug(`Pulled ${arr.length} report folder(s) from server`);
   }
 
-  // Notify React components that IDB was updated
-  window.dispatchEvent(new CustomEvent('local-data-written'));
+  if (hasChanges) {
+    log.info('Pull fresh data detected changes — dispatching local-data-written');
+    window.dispatchEvent(new CustomEvent('local-data-written'));
+  } else {
+    log.debug('Pull fresh data completed — no changes detected');
+  }
 
   // Final cleanup: merge any orphan duplicate folders created before these fixes
   await _consolidateDuplicateFolders();

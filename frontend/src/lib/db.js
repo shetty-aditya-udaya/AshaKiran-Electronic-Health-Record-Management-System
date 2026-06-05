@@ -174,10 +174,21 @@ export async function getPendingPatients() {
  *    badge when records were already synced via a different path.
  *  - If no local record exists yet → insert it as SYNCED
  */
+function isEquivalent(a, b) {
+  if (a === b) return true;
+  if (a == null || b == null) return a == b;
+  if (typeof a === 'object' && typeof b === 'object') {
+    return JSON.stringify(a) === JSON.stringify(b);
+  }
+  return String(a) === String(b);
+}
+
 export async function bulkUpsertPatients(patients) {
   const uid = getCurrentUserId() || '';
   const reconciled = [];  // records that were pending but now confirmed synced
   const upserted   = [];  // new/updated records
+
+  const patientFields = ['name', 'age', 'gender', 'phone', 'village', 'is_pregnant', 'weeks_of_pregnancy', 'category', 'disease', 'status', 'health_status'];
 
   for (const p of patients) {
     // Server always provides `local_id` (the UUID we sent) and `id` (its PK).
@@ -204,24 +215,45 @@ export async function bulkUpsertPatients(patients) {
       if (existing.syncStatus !== SYNC.SYNCED) {
         // Record was PENDING or RETRYING — server confirms it exists.
         // Mark it synced with the authoritative server id.
+        const updated = {
+          ...existing,
+          ...p,
+          syncStatus: SYNC.SYNCED,
+          id:         p.id ?? existing.id,
+          userId:     uid || existing.userId || '',
+          updatedAt:  Date.now(),
+        };
         await db.patients.update(existing.local_id, {
           syncStatus: SYNC.SYNCED,
           id:         p.id ?? existing.id,
           userId:     uid || existing.userId || '',
           updatedAt:  Date.now(),
         });
-        reconciled.push(existing.local_id);
+        reconciled.push(updated);
       } else {
         // Already synced — refresh with latest server data (in-place update,
         // preserve the ORIGINAL primary key so no duplicate row is created)
-        upserted.push({
-          ...existing,
-          ...p,
-          local_id:   existing.local_id, // always keep the original UUID key
-          userId:     uid || existing.userId || '',
-          syncStatus: SYNC.SYNCED,
-          updatedAt:  Date.now(),
-        });
+        let hasChanges = false;
+        for (const f of patientFields) {
+          if (!isEquivalent(existing[f], p[f])) {
+            hasChanges = true;
+            break;
+          }
+        }
+        if (!hasChanges && !isEquivalent(existing.vaccination_status, p.vaccination_status)) {
+          hasChanges = true;
+        }
+
+        if (hasChanges) {
+          upserted.push({
+            ...existing,
+            ...p,
+            local_id:   existing.local_id, // always keep the original UUID key
+            userId:     uid || existing.userId || '',
+            syncStatus: SYNC.SYNCED,
+            updatedAt:  Date.now(),
+          });
+        }
       }
     } else {
       // Truly brand-new record from server (another device / previous session)
@@ -239,8 +271,9 @@ export async function bulkUpsertPatients(patients) {
     await db.patients.bulkPut(upserted);
   }
 
-  return upserted;
+  return reconciled.concat(upserted);
 }
+
 
 export async function markPatientSynced(local_id, serverId) {
   await db.patients.update(local_id, {
@@ -382,6 +415,10 @@ export async function getPendingVisits() {
 export async function bulkUpsertVisits(visits) {
   const uid = getCurrentUserId() || '';
   const upserted = [];
+  let changed = false;
+
+  const visitFields = ['patientId', 'patient_id', 'visit_type', 'type', 'visit_date', 'date', 'time', 'status', 'severity', 'notes', 'treatment_status'];
+
   for (const v of visits) {
     // ── Step 1: Try primary key (local_id / UUID) lookup ─────────────────────
     const localId  = v.local_id || v.id?.toString() || crypto.randomUUID();
@@ -399,23 +436,55 @@ export async function bulkUpsertVisits(visits) {
         : SYNC.SYNCED;
 
       // Merge server fields, protecting local clinical data & sync status
-      await db.visits.update(localId, {
+      const updateObj = {
+        ...existing,
         ...v,
         status:     preservedStatus,
         syncStatus: isSynced,
         id:         v.id ?? existing.id,
-        updatedAt:  Date.now(),
-      });
+      };
+
+      let hasChanges = false;
+      for (const f of visitFields) {
+        if (!isEquivalent(existing[f], updateObj[f])) {
+          hasChanges = true;
+          break;
+        }
+      }
+      if (!hasChanges && !isEquivalent(existing.details, updateObj.details)) hasChanges = true;
+      if (!hasChanges && !isEquivalent(existing.prescription_data, updateObj.prescription_data)) hasChanges = true;
+      if (!hasChanges && !isEquivalent(existing.prescription_images, updateObj.prescription_images)) hasChanges = true;
+
+      if (hasChanges) {
+        await db.visits.update(localId, {
+          ...v,
+          status:     preservedStatus,
+          syncStatus: isSynced,
+          id:         v.id ?? existing.id,
+          updatedAt:  Date.now(),
+        });
+        changed = true;
+      }
 
       // Also reconcile the linked reminder
       const reminder = await db.reminders.get(localId);
       if (reminder) {
-        await db.reminders.update(localId, {
+        let reminderChanged = false;
+        const rUpdate = {
           syncStatus: isSynced,
           status:     preservedStatus,
           id:         v.id ?? reminder.id,
-          updatedAt:  Date.now(),
-        });
+        };
+        if (reminder.syncStatus !== rUpdate.syncStatus || reminder.status !== rUpdate.status || reminder.id !== rUpdate.id) {
+          reminderChanged = true;
+        }
+        if (reminderChanged) {
+          await db.reminders.update(localId, {
+            ...rUpdate,
+            updatedAt:  Date.now(),
+          });
+          changed = true;
+        }
       }
       continue;
     }
@@ -443,22 +512,54 @@ export async function bulkUpsertVisits(visits) {
         const isSynced = (existingByServerId.status === 'COMPLETED' && v.status !== 'COMPLETED')
           ? existingByServerId.syncStatus
           : SYNC.SYNCED;
-        await db.visits.update(existingByServerId.local_id, {
+
+        const updateObj = {
+          ...existingByServerId,
           ...v,
-          local_id:   existingByServerId.local_id, // preserve original UUID key
           status:     preservedStatus,
           syncStatus: isSynced,
-          updatedAt:  Date.now(),
-        });
+        };
+
+        let hasChanges = false;
+        for (const f of visitFields) {
+          if (!isEquivalent(existingByServerId[f], updateObj[f])) {
+            hasChanges = true;
+            break;
+          }
+        }
+        if (!hasChanges && !isEquivalent(existingByServerId.details, updateObj.details)) hasChanges = true;
+        if (!hasChanges && !isEquivalent(existingByServerId.prescription_data, updateObj.prescription_data)) hasChanges = true;
+        if (!hasChanges && !isEquivalent(existingByServerId.prescription_images, updateObj.prescription_images)) hasChanges = true;
+
+        if (hasChanges) {
+          await db.visits.update(existingByServerId.local_id, {
+            ...v,
+            local_id:   existingByServerId.local_id, // preserve original UUID key
+            status:     preservedStatus,
+            syncStatus: isSynced,
+            updatedAt:  Date.now(),
+          });
+          changed = true;
+        }
         // Reconcile linked reminder too
         const reminder = await db.reminders.get(existingByServerId.local_id);
         if (reminder) {
-          await db.reminders.update(existingByServerId.local_id, {
+          let reminderChanged = false;
+          const rUpdate = {
             syncStatus: isSynced,
             status:     preservedStatus,
             id:         v.id ?? reminder.id,
-            updatedAt:  Date.now(),
-          });
+          };
+          if (reminder.syncStatus !== rUpdate.syncStatus || reminder.status !== rUpdate.status || reminder.id !== rUpdate.id) {
+            reminderChanged = true;
+          }
+          if (reminderChanged) {
+            await db.reminders.update(existingByServerId.local_id, {
+              ...rUpdate,
+              updatedAt:  Date.now(),
+            });
+            changed = true;
+          }
         }
         continue;
       }
@@ -472,10 +573,13 @@ export async function bulkUpsertVisits(visits) {
       syncStatus: SYNC.SYNCED,
       updatedAt:  Date.now(),
     });
+    changed = true;
   }
   if (upserted.length > 0) {
     await db.visits.bulkPut(upserted);
   }
+
+  return changed;
 }
 
 
@@ -705,6 +809,7 @@ export async function getReminderByIdOrLocalId(id) {
 export async function bulkUpsertReminders(reminders) {
   const uid = getCurrentUserId() || '';
   let reconciled = 0;
+  let changed = false;
   const reminderRecords = [];
   const visitRecords = [];
 
@@ -735,13 +840,27 @@ export async function bulkUpsertReminders(reminders) {
         continue;
       }
 
-      await db.reminders.update(existingReminder.local_id, {
+      // Check if actual values changed
+      let rChanged = false;
+      const rUpdate = {
         syncStatus: isSynced,
         id:         r.id ?? existingReminder.id,
         status:     preservedStatus,
-        updatedAt:  Date.now(),
-      });
-      reconciled++;
+      };
+      if (existingReminder.syncStatus !== rUpdate.syncStatus ||
+          existingReminder.status !== rUpdate.status ||
+          existingReminder.id !== rUpdate.id) {
+        rChanged = true;
+      }
+
+      if (rChanged) {
+        await db.reminders.update(existingReminder.local_id, {
+          ...rUpdate,
+          updatedAt:  Date.now(),
+        });
+        reconciled++;
+        changed = true;
+      }
     } else {
       // Not stale or brand new — upsert with fresh server data
       if (isVisitTombstoned(localId)) {
@@ -755,6 +874,7 @@ export async function bulkUpsertReminders(reminders) {
         syncStatus: SYNC.SYNCED,
         updatedAt:  Date.now(),
       });
+      changed = true;
     }
 
     // ── Reconcile linked visit ────────────────────────────────────────────────
@@ -774,13 +894,26 @@ export async function bulkUpsertReminders(reminders) {
         ? existingVisit.syncStatus
         : SYNC.SYNCED;
 
-      await db.visits.update(existingVisit.local_id, {
+      let vChanged = false;
+      const vUpdate = {
         syncStatus: isSynced,
         id:         r.id ?? existingVisit.id,
         status:     preservedStatus,
-        updatedAt:  Date.now(),
-      });
-      reconciled++;
+      };
+      if (existingVisit.syncStatus !== vUpdate.syncStatus ||
+          existingVisit.status !== vUpdate.status ||
+          existingVisit.id !== vUpdate.id) {
+        vChanged = true;
+      }
+
+      if (vChanged) {
+        await db.visits.update(existingVisit.local_id, {
+          ...vUpdate,
+          updatedAt:  Date.now(),
+        });
+        reconciled++;
+        changed = true;
+      }
     } else if (!existingReminder) { // Only insert new visit if reminder was also new
       // ── DEDUP GUARD: check if a local visit already exists with this server id ──
       // Without this, bulkPut creates a new record keyed "11" even when a UUID-
@@ -810,6 +943,7 @@ export async function bulkUpsertReminders(reminders) {
           syncStatus: SYNC.SYNCED,
           updatedAt:  Date.now(),
         });
+        changed = true;
       }
     }
   }
@@ -824,6 +958,8 @@ export async function bulkUpsertReminders(reminders) {
   if (reconciled > 0) {
     console.log(`%c[DB] bulkUpsertReminders: reconciled ${reconciled} PENDING/RETRYING records → SYNCED`, 'color:#22c55e;font-weight:bold');
   }
+
+  return changed;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -856,18 +992,31 @@ export async function createReportFolder(patient) {
   }
 
   if (existing) {
-    // Update in-place — preserve original primary key, never insert a new row
-    await db.reportFolders.update(existing.local_id, {
+    const updatedFolder = {
       name:          patient.name,
       category:      patient.category || (patient.is_pregnant ? 'Pregnancy' : 'General'),
       village:       patient.village,
       status:        patient.status || 'ACTIVE',
-      // Backfill both IDs so the folder is findable by either key going forward
       patientId:     patientId ?? existing.patientId,
       patientLocalId: patientLocalId ?? existing.patientLocalId,
       syncStatus:    patient.syncStatus === SYNC.SYNCED ? SYNC.SYNCED : existing.syncStatus,
-      updatedAt:     Date.now(),
-    });
+    };
+
+    let fChanged = false;
+    const folderFields = ['name', 'category', 'village', 'status', 'patientId', 'patientLocalId', 'syncStatus'];
+    for (const f of folderFields) {
+      if (!isEquivalent(existing[f], updatedFolder[f])) {
+        fChanged = true;
+        break;
+      }
+    }
+
+    if (fChanged) {
+      await db.reportFolders.update(existing.local_id, {
+        ...updatedFolder,
+        updatedAt:     Date.now(),
+      });
+    }
     return existing;
   }
 
@@ -968,6 +1117,7 @@ export async function getReportFolder(patientId) {
 export async function bulkUpsertReportFolders(serverPatients) {
   const uid = getCurrentUserId() || '';
   let reconciled = 0;
+  let changed = false;
   for (const sp of serverPatients) {
     const patientId     = String(sp.id);
     const serverLocalId = sp.local_id ? String(sp.local_id) : null;
@@ -1000,7 +1150,7 @@ export async function bulkUpsertReportFolders(serverPatients) {
 
     if (existing) {
       // Update in-place — reconcile and backfill both ID fields
-      await db.reportFolders.update(existing.local_id, {
+      const updateObj = {
         syncStatus:    SYNC.SYNCED,
         name:          sp.name         || existing.name,
         category:      sp.category     || existing.category || 'General',
@@ -1010,8 +1160,24 @@ export async function bulkUpsertReportFolders(serverPatients) {
         userId:        uid || existing.userId || '',
         // Preserve the UUID-based patientLocalId if we have it
         patientLocalId: existing.patientLocalId || serverLocalId || patientId,
-        updatedAt:     Date.now(),
-      });
+      };
+
+      let fChanged = false;
+      const folderFields = ['syncStatus', 'name', 'category', 'village', 'status', 'patientId', 'patientLocalId', 'userId'];
+      for (const f of folderFields) {
+        if (!isEquivalent(existing[f], updateObj[f])) {
+          fChanged = true;
+          break;
+        }
+      }
+
+      if (fChanged) {
+        await db.reportFolders.update(existing.local_id, {
+          ...updateObj,
+          updatedAt:     Date.now(),
+        });
+        changed = true;
+      }
       if (existing.syncStatus !== SYNC.SYNCED) reconciled++;
       continue;
     }
@@ -1033,11 +1199,14 @@ export async function bulkUpsertReportFolders(serverPatients) {
       createdAt:     new Date().toISOString(),
     };
     await db.reportFolders.put(folder);
+    changed = true;
   }
 
   if (reconciled > 0) {
     console.log(`%c[DB] bulkUpsertReportFolders: reconciled ${reconciled} PENDING/RETRYING folders → SYNCED`, 'color:#22c55e;font-weight:bold');
   }
+
+  return changed;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1082,19 +1251,45 @@ export async function getPendingReportItems() {
 export async function bulkUpsertReportItems(reports, patientId) {
   const uid = getCurrentUserId() || '';
   let reconciled = 0;
+  let changed = false;
   const records = [];
   for (const r of reports) {
     const localId = r.local_id || r.id?.toString() || crypto.randomUUID();
     const existing = await db.reportItems.get(localId);
 
-    if (existing && existing.syncStatus !== SYNC.SYNCED) {
-      // ── Reconcile: server confirms this report item exists → SYNCED ─────────
-      await db.reportItems.update(localId, {
-        syncStatus: SYNC.SYNCED,
-        id:         r.id ?? existing.id,
-        updatedAt:  Date.now(),
-      });
-      reconciled++;
+    if (existing) {
+      if (existing.syncStatus !== SYNC.SYNCED) {
+        // ── Reconcile: server confirms this report item exists → SYNCED ─────────
+        await db.reportItems.update(localId, {
+          syncStatus: SYNC.SYNCED,
+          id:         r.id ?? existing.id,
+          updatedAt:  Date.now(),
+        });
+        reconciled++;
+        changed = true;
+      } else {
+        let hasChanges = false;
+        const fields = ['title', 'type', 'description', 'doctor_name', 'status', 'next_follow_up'];
+        for (const f of fields) {
+          if (!isEquivalent(existing[f], r[f])) {
+            hasChanges = true;
+            break;
+          }
+        }
+        if (!hasChanges && !isEquivalent(existing.images, r.images)) {
+          hasChanges = true;
+        }
+
+        if (hasChanges) {
+          await db.reportItems.update(localId, {
+            ...r,
+            syncStatus: SYNC.SYNCED,
+            id:         r.id ?? existing.id,
+            updatedAt:  Date.now(),
+          });
+          changed = true;
+        }
+      }
       continue;
     }
 
@@ -1106,6 +1301,7 @@ export async function bulkUpsertReportItems(reports, patientId) {
       syncStatus: SYNC.SYNCED,
       updatedAt:  Date.now(),
     });
+    changed = true;
   }
   if (records.length > 0) {
     await db.reportItems.bulkPut(records);
@@ -1114,6 +1310,8 @@ export async function bulkUpsertReportItems(reports, patientId) {
   if (reconciled > 0) {
     console.log(`%c[DB] bulkUpsertReportItems: reconciled ${reconciled} PENDING/RETRYING items → SYNCED`, 'color:#22c55e;font-weight:bold');
   }
+
+  return changed;
 }
 
 export async function markReportItemSynced(local_id, serverId) {
