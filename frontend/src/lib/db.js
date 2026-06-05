@@ -1635,15 +1635,28 @@ export async function getLocalDashboardAnalytics() {
     db.reportItems.where('userId').equals(uid).toArray(),
   ]);
 
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const getLocalDateString = () => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const extractDateOnly = (dStr) => {
+    if (!dStr) return '';
+    return dStr.split('T')[0];
+  };
+
+  const todayStr = getLocalDateString();
   const now      = new Date();
 
   // ── STATS ──────────────────────────────────────────────────────────────────
   const totalPatients = patients.length;
 
   const todayVisitsList = visits.filter(v => {
-    const d = v.visit_date || v.visit_datetime || v.date || '';
-    return d.slice(0, 10) === todayStr;
+    const d = extractDateOnly(v.visit_date || v.visit_datetime || v.date || '');
+    return d === todayStr;
   });
   const todayCompleted = todayVisitsList.filter(v =>
     (v.status || '').toUpperCase() === 'COMPLETED'
@@ -1656,26 +1669,61 @@ export async function getLocalDashboardAnalytics() {
     (v.status || '').toUpperCase() === 'COMPLETED'
   );
 
-  const followupsDue = reminders.filter(r => {
-    const due = r.due_date || r.visit_date || '';
-    return (r.status || '').toLowerCase() !== 'completed' && due <= todayStr;
-  });
-
-  const highRiskPatients = patients.filter(p =>
-    (p.risk_level || '').toLowerCase() === 'high'
+  // Overdue visits (pending, date < today)
+  const overdueVisits = visits.filter(v =>
+    (v.status || '').toUpperCase() === 'PENDING' &&
+    extractDateOnly(v.visit_date || v.date) < todayStr
   );
+
+  // Pending reminders (due <= today)
+  const pendingReminders = reminders.filter(r =>
+    (r.status || '').toUpperCase() === 'PENDING' &&
+    extractDateOnly(r.due_date || r.visit_date || r.date) <= todayStr
+  );
+
+  // Overdue reminders (due < today)
+  const overdueReminders = reminders.filter(r =>
+    (r.status || '').toUpperCase() === 'PENDING' &&
+    extractDateOnly(r.due_date || r.visit_date || r.date) < todayStr
+  );
+
+  // Scheduled / upcoming follow-ups
+  const upcomingFollowups = reminders.filter(r =>
+    (r.status || '').toUpperCase() === 'PENDING' &&
+    extractDateOnly(r.due_date || r.visit_date || r.date) > todayStr
+  );
+
+  // High risk patients check
+  const isHighRiskPatient = (p) => {
+    if ((p.risk_level || '').toLowerCase() === 'high' || p.is_high_risk === true) {
+      return true;
+    }
+    const disease = (p.disease || '').toLowerCase();
+    if (disease.includes('severe') || disease.includes('complication') || disease.includes('critical') || disease.includes('ebola') || disease.includes('malaria') || disease.includes('tb')) {
+      return true;
+    }
+    if (p.risk_flags && typeof p.risk_flags === 'object') {
+      const flags = Object.values(p.risk_flags);
+      if (flags.some(v => v === true || v === 'true')) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  const highRiskPatients = patients.filter(isHighRiskPatient);
 
   const stats = {
     totalPatients,
-    todayVisits:          todayCompleted.length,
+    todayVisits:          todayVisitsList.length === 0 ? null : todayCompleted.length,
     pendingVisitsToday:   todayPending.length,
-    followUpsDue:         followupsDue.length,
-    overdueFollowUps:     followupsDue.filter(r => (r.due_date || r.visit_date || '') < todayStr).length,
-    highRiskCount:        highRiskPatients.length,
+    followUpsDue:         overdueVisits.length + pendingReminders.length + upcomingFollowups.length,
+    overdueFollowUps:     overdueVisits.length + overdueReminders.length,
+    highRiskCount:        patients.length === 0 ? null : highRiskPatients.length,
     visitsCompletedCount: allCompleted.length,
     // Legacy compat
-    highRisk:       highRiskPatients.length,
-    remindersCount: todayPending.length + followupsDue.length,
+    highRisk:       patients.length === 0 ? null : highRiskPatients.length,
+    remindersCount: todayPending.length + overdueVisits.length + pendingReminders.length,
   };
 
   // ── PATIENT DISTRIBUTION ───────────────────────────────────────────────────
@@ -1685,7 +1733,7 @@ export async function getLocalDashboardAnalytics() {
     if (cat === 'Pregnancy' || cat === 'Maternal') maternal++;
     else if (p.age != null && Number(p.age) <= 12) child++;
     else if (cat === 'Chronic' || cat === 'NCD') chronic++;
-    else if ((p.risk_level || '').toLowerCase() === 'high') highRisk++;
+    else if (isHighRiskPatient(p)) highRisk++;
     else general++;
   }
   const distribution = { general, maternal, child, chronic, highRisk };
@@ -1717,7 +1765,7 @@ export async function getLocalDashboardAnalytics() {
     d.setDate(1);
     d.setMonth(d.getMonth() - i);
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    const label = d.toLocaleString('default', { month: 'short' });
+    const label = d.toLocaleString('en-US', { month: 'short' });
     monthlyMap[key] = { month: label, patientsAdded: 0, visitsCompleted: 0 };
   }
   for (const p of patients) {
@@ -1745,13 +1793,20 @@ export async function getLocalDashboardAnalytics() {
     });
   }
   for (const v of visits) {
+    const pat = patientById[v.patientId] || patientById[v.patient_id];
     if ((v.status || '').toUpperCase() === 'COMPLETED') {
-      const pat = patientById[v.patientId] || patientById[v.patient_id];
       activityList.push({
         type:      'visit_completed',
         title:     'Visit completed',
         detail:    `${pat?.name || 'Patient'} • ${v.visit_type || 'General Checkup'}`,
         timestamp: v.completedAt || v.completed_at || v.visit_date || '',
+      });
+    } else {
+      activityList.push({
+        type:      'visit_scheduled',
+        title:     'Visit scheduled',
+        detail:    `${pat?.name || 'Patient'} • ${v.visit_type || 'General Checkup'}`,
+        timestamp: v.createdAt || v.created_at || v.visit_date || '',
       });
     }
   }
@@ -1763,41 +1818,110 @@ export async function getLocalDashboardAnalytics() {
       timestamp: ri.createdAt || ri.created_at || '',
     });
   }
-
-  activityList.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
-  const recentActivities = activityList.slice(0, 8);
-
-  // ── TODAY'S SCHEDULE ───────────────────────────────────────────────────────
-  const scheduleItems = [];
-  for (const v of todayVisitsList) {
-    const pat = patientById[v.patientId] || patientById[v.patient_id];
-    const dt  = v.visit_date || v.visit_datetime || '';
-    const time = dt.length >= 16
-      ? new Date(dt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      : '09:00 AM';
-    const isCompleted = (v.status || '').toUpperCase() === 'COMPLETED';
-    const isMissed    = !isCompleted && dt < now.toISOString();
-    scheduleItems.push({
-      time,
-      sortKey:  dt,
-      title:    v.visit_type || 'Home Visit',
-      place:    `${pat?.name || 'Patient'}${pat?.village ? ' • ' + pat.village : ''}`,
-      status:   isCompleted ? 'completed' : isMissed ? 'missed' : 'upcoming',
-    });
-  }
   for (const r of reminders) {
-    const due = r.due_date || r.visit_date || '';
-    if (due.slice(0, 10) === todayStr) {
-      const pat = patientById[r.patientId] || patientById[r.patient_id];
-      scheduleItems.push({
-        time:    '09:00 AM',
-        sortKey: due + 'T09:00:00',
-        title:   r.reminder_type || r.type || 'Follow-up',
-        place:   `${pat?.name || 'Patient'}${pat?.village ? ' • ' + pat.village : ''}`,
-        status:  (r.status || '').toLowerCase() === 'completed' ? 'completed' : 'upcoming',
+    const pat = patientById[r.patientId] || patientById[r.patient_id];
+    if ((r.status || '').toUpperCase() === 'COMPLETED') {
+      activityList.push({
+        type:      'reminder_done',
+        title:     'Follow-up completed',
+        detail:    `${pat?.name || 'Patient'} • ${r.reminder_type || r.type || 'Follow-up'}`,
+        timestamp: r.completedAt || r.updatedAt || '',
+      });
+    } else {
+      activityList.push({
+        type:      'reminder_generated',
+        title:     'Reminder generated',
+        detail:    `${pat?.name || 'Patient'} • ${r.reminder_type || r.type || 'Follow-up'}`,
+        timestamp: r.createdAt || '',
       });
     }
   }
+
+  const validActivities = activityList.filter(a => a.timestamp);
+  validActivities.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  const recentActivities = validActivities.slice(0, 8);
+
+  // ── TODAY'S SCHEDULE ───────────────────────────────────────────────────────
+  const scheduleItems = [];
+
+  // 1. Scheduled visits for today, or past pending visits (overdue)
+  const scheduleVisits = visits.filter(v => {
+    const vDate = extractDateOnly(v.visit_date || v.visit_datetime || v.date || '');
+    const isCompleted = (v.status || '').toUpperCase() === 'COMPLETED';
+    return vDate === todayStr || (!isCompleted && vDate < todayStr);
+  });
+
+  for (const v of scheduleVisits) {
+    const pat = patientById[v.patientId] || patientById[v.patient_id];
+    const dt  = v.visit_date || v.visit_datetime || v.date || '';
+    const time = v.time || (dt.length >= 16
+      ? new Date(dt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      : '09:00 AM');
+    const isCompleted = (v.status || '').toUpperCase() === 'COMPLETED';
+    
+    let status = 'upcoming';
+    if (isCompleted) {
+      status = 'completed';
+    } else {
+      const vDate = extractDateOnly(dt);
+      if (vDate === todayStr) {
+        status = 'pending';
+      } else if (vDate < todayStr) {
+        status = 'overdue';
+      } else {
+        status = 'upcoming';
+      }
+    }
+
+    scheduleItems.push({
+      time,
+      sortKey: dt + (v.time || '09:00'),
+      title: v.visit_type || 'Home Visit',
+      place: `${pat?.name || 'Patient'}${pat?.village ? ' • ' + pat.village : ''}`,
+      status,
+      visitId: v.local_id || v.id,
+    });
+  }
+
+  // 2. Reminders for today, or past pending reminders (overdue)
+  for (const r of reminders) {
+    const due = extractDateOnly(r.due_date || r.visit_date || r.date || '');
+    const isCompleted = (r.status || '').toUpperCase() === 'COMPLETED';
+    if (due === todayStr || (!isCompleted && due < todayStr)) {
+      const pat = patientById[r.patientId] || patientById[r.patient_id];
+      
+      let status = 'upcoming';
+      if (isCompleted) {
+        status = 'completed';
+      } else {
+        if (due === todayStr) {
+          status = 'pending';
+        } else if (due < todayStr) {
+          status = 'overdue';
+        } else {
+          status = 'upcoming';
+        }
+      }
+
+      // Check if we already added a visit for the same local_id / id to avoid duplicates
+      const isDuplicate = scheduleItems.some(item => 
+        String(item.visitId) === String(r.local_id) || 
+        String(item.visitId) === String(r.id)
+      );
+
+      if (!isDuplicate) {
+        scheduleItems.push({
+          time: r.time || '09:00 AM',
+          sortKey: due + 'T' + (r.time || '09:00'),
+          title: r.reminder_type || r.type || 'Follow-up',
+          place: `${pat?.name || 'Patient'}${pat?.village ? ' • ' + pat.village : ''}`,
+          status,
+          reminderId: r.local_id || r.id,
+        });
+      }
+    }
+  }
+
   scheduleItems.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
   const todaySchedule = scheduleItems.slice(0, 8);
 
@@ -1810,19 +1934,25 @@ export async function getLocalDashboardAnalytics() {
       message: `${highRiskPatients.length} high risk patient${highRiskPatients.length > 1 ? 's' : ''} need attention`,
     });
   }
-  const overdue = followupsDue.filter(r => (r.due_date || r.visit_date || '') < todayStr);
-  if (overdue.length > 0) {
+  if (overdueVisits.length > 0) {
     alerts.push({
       type:    'overdue_followup',
-      count:   overdue.length,
-      message: `${overdue.length} follow-up${overdue.length > 1 ? 's are' : ' is'} overdue`,
+      count:   overdueVisits.length,
+      message: `${overdueVisits.length} scheduled visit${overdueVisits.length > 1 ? 's' : ''} overdue/missed`,
     });
   }
-  if (followupsDue.length > 0) {
+  if (todayPending.length > 0) {
     alerts.push({
       type:    'followup_due',
-      count:   followupsDue.length,
-      message: `${followupsDue.length} follow-up${followupsDue.length > 1 ? 's' : ''} due today`,
+      count:   todayPending.length,
+      message: `${todayPending.length} visit${todayPending.length > 1 ? 's are' : ' is'} scheduled for today`,
+    });
+  }
+  if (overdueReminders.length > 0) {
+    alerts.push({
+      type:    'overdue_followup',
+      count:   overdueReminders.length,
+      message: `${overdueReminders.length} follow-up reminder${overdueReminders.length > 1 ? 's' : ''} overdue`,
     });
   }
 

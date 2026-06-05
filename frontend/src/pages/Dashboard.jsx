@@ -13,6 +13,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { API_BASE_URL } from '../config';
 import { getLocalDashboardAnalytics } from '../lib/db';
+import { syncAll } from '../lib/syncService';
 import { useTranslation } from 'react-i18next';
 import { useConnection } from '../context/ConnectionContext';
 import {
@@ -249,7 +250,7 @@ const ALERT_META = {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function StatCard({ label, value, sub, subColor, icon: Icon, iconBg, iconColor, sparkData, sparkColor, onClick }) {
-  const displayValue = value === null || value === undefined ? '—' : String(value).padStart(2, '0');
+  const displayValue = value === null || value === undefined ? 'NA' : String(value).padStart(2, '0');
   return (
     <button onClick={onClick}
       className="group w-full text-left bg-white rounded-2xl border border-slate-100 p-5 hover:shadow-md hover:border-slate-200 transition-all duration-200 flex flex-col gap-3"
@@ -308,49 +309,42 @@ export default function Dashboard() {
     setUser(JSON.parse(localStorage.getItem('user')) || null);
   }, []);
 
-  // ── Two-phase fetch: local first, backend second ──────────────────────────
+  // ── Local IndexedDB calculation (Single Source of Truth) ──────────────────
   const fetchAnalytics = useCallback(async () => {
-    // Phase 1 — IndexedDB (instant, offline-first)
     try {
       const local = await getLocalDashboardAnalytics();
       setAnalytics(local);
-      setLoading(false);
+      setLastSync(new Date());
       setDataSource('local');
     } catch (err) {
-      console.warn('[Dashboard] Local analytics error:', err);
+      console.warn('[Dashboard] Local analytics calculation failed:', err);
+    } finally {
       setLoading(false);
     }
-
-    // Phase 2 — Backend (authoritative when online)
-    if (!isServerReachable) return;
-    try {
-      const token = localStorage.getItem('token');
-      const res   = await fetch(`${API_BASE_URL}/api/dashboard/analytics`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setAnalytics(data);
-        setLastSync(new Date());
-        setDataSource('server');
-      }
-    } catch (err) {
-      console.warn('[Dashboard] Backend analytics error:', err);
-    }
-  }, [isServerReachable]);
+  }, []);
 
   useEffect(() => { fetchAnalytics(); }, [fetchAnalytics]);
 
-  // Refresh on local DB writes
+  // Refresh on local DB writes and vital patient/visit mutations
   useEffect(() => {
     const h = () => fetchAnalytics();
     window.addEventListener('local-data-written', h);
     window.addEventListener('visit-added', h);
+    window.addEventListener('visit-completed', h);
+    window.addEventListener('visit-deleted', h);
     window.addEventListener('patient-added', h);
+    window.addEventListener('patient-deleted', h);
+    window.addEventListener('user-logged-in', h);
+    window.addEventListener('user-logged-out', h);
     return () => {
       window.removeEventListener('local-data-written', h);
       window.removeEventListener('visit-added', h);
+      window.removeEventListener('visit-completed', h);
+      window.removeEventListener('visit-deleted', h);
       window.removeEventListener('patient-added', h);
+      window.removeEventListener('patient-deleted', h);
+      window.removeEventListener('user-logged-in', h);
+      window.removeEventListener('user-logged-out', h);
     };
   }, [fetchAnalytics]);
 
@@ -363,6 +357,13 @@ export default function Dashboard() {
 
   const handleRefresh = async () => {
     setRefreshing(true);
+    try {
+      if (isServerReachable) {
+        await syncAll();
+      }
+    } catch (err) {
+      console.warn('[Dashboard] Refresh sync failed:', err);
+    }
     await fetchAnalytics();
     setTimeout(() => setRefreshing(false), 700);
   };
@@ -394,8 +395,8 @@ export default function Dashboard() {
 
   // Quick actions
   const quickActions = [
-    { icon: UserPlus,      label: 'Register Patient', color: '#0F766E', bg: '#EFF8F7', path: '/patients/add' },
-    { icon: PlusCircle,    label: 'Add Visit',        color: '#2563EB', bg: '#EFF6FF', path: '/reminders' },
+    { icon: UserPlus,      label: 'Register Patient', color: '#0F766E', bg: '#EFF8F7', path: '/patients' },
+    { icon: PlusCircle,    label: 'Add Visit',        color: '#2563EB', bg: '#EFF6FF', path: '/patients' },
     { icon: FolderHeart,   label: 'Health Record',    color: '#7C3AED', bg: '#F5F3FF', path: '/reports' },
     { icon: Bell,          label: 'Reminders',        color: '#D97706', bg: '#FFFBEB', path: '/reminders' },
     { icon: Activity,      label: 'Reports',          color: '#F43F5E', bg: '#FFF1F2', path: '/reports' },
@@ -487,10 +488,12 @@ export default function Dashboard() {
           <StatCard
             label="Today's Visits"
             value={stats.todayVisits}
-            sub={stats.pendingVisitsToday > 0
+            sub={stats.todayVisits === null
+              ? 'No visits scheduled'
+              : stats.pendingVisitsToday > 0
               ? `+${stats.pendingVisitsToday} pending today`
-              : stats.todayVisits === 0 ? 'No visits today' : 'All completed'}
-            subColor={stats.pendingVisitsToday > 0 ? '#D97706' : '#16A34A'}
+              : 'All completed'}
+            subColor={stats.todayVisits === null ? '#94A3B8' : stats.pendingVisitsToday > 0 ? '#D97706' : '#16A34A'}
             icon={CalendarDays} iconBg="#EFF6FF" iconColor="#2563EB"
             sparkData={visitsMonthly}
             sparkColor="#6366F1"
@@ -511,7 +514,11 @@ export default function Dashboard() {
           <StatCard
             label="High Risk Cases"
             value={stats.highRiskCount}
-            sub={stats.highRiskCount === 0 ? 'All patients stable' : 'Under monitoring'}
+            sub={stats.highRiskCount === null 
+              ? 'No patients registered' 
+              : stats.highRiskCount === 0 
+              ? 'All patients stable' 
+              : 'Under monitoring'}
             subColor={stats.highRiskCount > 0 ? '#F43F5E' : '#16A34A'}
             icon={AlertTriangle} iconBg="#FFF1F2" iconColor="#F43F5E"
             sparkData={[]}
@@ -604,11 +611,15 @@ export default function Dashboard() {
                       <span className={`text-[9.5px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 border ${
                         s.status === 'completed'
                           ? 'bg-teal-50 text-teal-700 border-teal-200'
-                          : s.status === 'missed'
+                          : s.status === 'overdue'
                           ? 'bg-red-50 text-red-600 border-red-200'
+                          : s.status === 'pending'
+                          ? 'bg-blue-50 text-blue-700 border-blue-200'
                           : 'bg-slate-50 text-slate-500 border-slate-200'
                       }`}>
-                        {s.status === 'completed' ? 'Completed' : s.status === 'missed' ? 'Missed' : 'Upcoming'}
+                        {s.status === 'completed' ? 'Completed' : 
+                         s.status === 'overdue' ? 'Overdue' : 
+                         s.status === 'pending' ? 'Today/Pending' : 'Upcoming'}
                       </span>
                     </div>
                   </div>
