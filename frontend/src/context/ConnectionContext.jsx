@@ -22,10 +22,11 @@ const ConnectionContext = createContext({
 });
 
 export function ConnectionProvider({ children }) {
-  const [serverStatus, setServerStatus] = useState('online');
+  const [serverStatus, setServerStatus] = useState('checking');
   const failStreak = useRef(0);
   const pollRef    = useRef(null);
-  const lastStatus = useRef('online');
+  const lastStatus = useRef('checking');
+  const statusRef  = useRef('checking'); // mirrors state without triggering re-render
 
   const check = useCallback(async () => {
     if (!navigator.onLine) {
@@ -45,6 +46,7 @@ export function ConnectionProvider({ children }) {
 
       if (lastStatus.current !== 'online') {
         lastStatus.current = 'online';
+        statusRef.current  = 'online';
         setServerStatus('online');
         // Notify sync engine that server came back
         window.dispatchEvent(new CustomEvent('server-online'));
@@ -52,8 +54,9 @@ export function ConnectionProvider({ children }) {
     } else {
       failStreak.current += 1;
 
-      if (failStreak.current >= FAIL_THRESHOLD && lastStatus.current === 'online') {
+      if (failStreak.current >= FAIL_THRESHOLD && lastStatus.current !== 'offline') {
         lastStatus.current = 'offline';
+        statusRef.current  = 'offline';
         setServerStatus('offline');
         // Notify sync engine
         window.dispatchEvent(new CustomEvent('server-offline'));
@@ -69,9 +72,10 @@ export function ConnectionProvider({ children }) {
   useEffect(() => {
     check();
     
-    // Adaptive polling: check connection more frequently when offline (5s vs 15s)
-    const intervalMs = serverStatus === 'offline' ? 5_000 : POLL_INTERVAL_MS;
-    pollRef.current = setInterval(check, intervalMs);
+    // Fixed polling interval — adaptive logic handled inside check() via the ref.
+    // Do NOT put serverStatus in deps: it would tear down and recreate the interval
+    // on every status change, causing rapid-fire health checks and banner flicker.
+    pollRef.current = setInterval(check, POLL_INTERVAL_MS);
 
     const onVisible = () => { if (document.visibilityState === 'visible') check(); };
     document.addEventListener('visibilitychange', onVisible);
@@ -82,6 +86,7 @@ export function ConnectionProvider({ children }) {
       failStreak.current = 0;
       if (lastStatus.current !== 'online') {
         lastStatus.current = 'online';
+        statusRef.current  = 'online';
         setServerStatus('online');
         window.dispatchEvent(new CustomEvent('server-online'));
       }
@@ -89,8 +94,9 @@ export function ConnectionProvider({ children }) {
 
     const handleApiFailure = () => {
       failStreak.current += 1;
-      if (failStreak.current >= FAIL_THRESHOLD && lastStatus.current === 'online') {
+      if (failStreak.current >= FAIL_THRESHOLD && lastStatus.current !== 'offline') {
         lastStatus.current = 'offline';
+        statusRef.current  = 'offline';
         setServerStatus('offline');
         window.dispatchEvent(new CustomEvent('server-offline'));
       }
@@ -107,7 +113,7 @@ export function ConnectionProvider({ children }) {
       window.removeEventListener('api-call-success', handleApiSuccess);
       window.removeEventListener('api-call-failure', handleApiFailure);
     };
-  }, [check, retryNow, serverStatus]);
+  }, [check, retryNow]); // ← serverStatus intentionally omitted — see comment above
 
   const isServerReachable = serverStatus === 'online';
 

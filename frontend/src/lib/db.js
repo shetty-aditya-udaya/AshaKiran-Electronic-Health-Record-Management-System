@@ -81,6 +81,36 @@ db.version(5).stores({
   prescriptionImages:   'local_id, syncStatus, visitLocalId, createdAt',
 });
 
+// v6: CRITICAL SECURITY FIX — Add `userId` as an indexed field to ALL stores.
+//     This enforces strict per-user data isolation in the shared IndexedDB.
+//     Every write is now stamped with the authenticated user's ID;
+//     every read returns only that user's records.
+//     The upgrade function clears ALL existing records (which lacked userId)
+//     so the sync engine can re-pull clean, user-scoped data from the server.
+db.version(6).stores({
+  patients:           'local_id, id, userId, syncStatus, createdAt, village, category',
+  visits:             'local_id, id, userId, syncStatus, patientId, visit_date, status',
+  reminders:          'local_id, id, userId, syncStatus, patientId, visit_date, status',
+  reportFolders:      'local_id, userId, syncStatus, patientId, patientLocalId, updatedAt',
+  reportItems:        'local_id, userId, syncStatus, patientId, patientLocalId, visitLocalId, createdAt',
+  syncQueue:          '++id, userId, entity, syncStatus, createdAt',
+  prescriptionImages: 'local_id, userId, syncStatus, visitLocalId, createdAt',
+}).upgrade(async tx => {
+  // Records from v5 and earlier lack `userId` and cannot be safely filtered.
+  // Clearing them forces a clean re-pull from the server after login.
+  // This runs once per browser and only affects pre-existing data.
+  console.log('%c[DB] v6 upgrade: clearing all stores to enforce per-user isolation. Data will re-sync from server.', 'color:#f97316;font-weight:bold');
+  await Promise.all([
+    tx.table('patients').clear(),
+    tx.table('visits').clear(),
+    tx.table('reminders').clear(),
+    tx.table('reportFolders').clear(),
+    tx.table('reportItems').clear(),
+    tx.table('syncQueue').clear(),
+    tx.table('prescriptionImages').clear(),
+  ]);
+});
+
 
 // ── syncStatus enum ────────────────────────────────────────────────────────────
 export const SYNC = {
@@ -91,14 +121,28 @@ export const SYNC = {
   FAILED:   'failed',
 };
 
+// ── Authenticated user ID helper ──────────────────────────────────────────────
+// Used internally by ALL DB read/write functions to enforce per-user isolation.
+// Reads from localStorage — the identical source used by the auth system and
+// sync engine. Returns null when no user is logged in; all read functions
+// return [] in that case, preventing any cross-user data from surfacing.
+export function getCurrentUserId() {
+  try {
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    return user?.id ? String(user.id) : null;
+  } catch { return null; }
+}
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // PATIENTS
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 export async function savePatient(patient) {
+  const uid = getCurrentUserId() || patient.userId || '';
   const record = {
     ...patient,
     local_id:   patient.local_id || crypto.randomUUID(),
+    userId:     uid,
     syncStatus: patient.syncStatus ?? SYNC.PENDING,
     updatedAt:  Date.now(),
   };
@@ -107,11 +151,16 @@ export async function savePatient(patient) {
 }
 
 export async function getAllPatients() {
-  return db.patients.toArray();
+  const uid = getCurrentUserId();
+  if (!uid) return [];
+  return db.patients.where('userId').equals(uid).toArray();
 }
 
 export async function getPendingPatients() {
-  return db.patients.where('syncStatus').anyOf([SYNC.PENDING, SYNC.RETRYING]).toArray();
+  const uid = getCurrentUserId();
+  if (!uid) return [];
+  return db.patients.where('syncStatus').anyOf([SYNC.PENDING, SYNC.RETRYING])
+    .and(p => p.userId === uid).toArray();
 }
 
 /**
@@ -126,6 +175,7 @@ export async function getPendingPatients() {
  *  - If no local record exists yet → insert it as SYNCED
  */
 export async function bulkUpsertPatients(patients) {
+  const uid = getCurrentUserId() || '';
   const reconciled = [];  // records that were pending but now confirmed synced
   const upserted   = [];  // new/updated records
 
@@ -157,6 +207,7 @@ export async function bulkUpsertPatients(patients) {
         await db.patients.update(existing.local_id, {
           syncStatus: SYNC.SYNCED,
           id:         p.id ?? existing.id,
+          userId:     uid || existing.userId || '',
           updatedAt:  Date.now(),
         });
         reconciled.push(existing.local_id);
@@ -167,6 +218,7 @@ export async function bulkUpsertPatients(patients) {
           ...existing,
           ...p,
           local_id:   existing.local_id, // always keep the original UUID key
+          userId:     uid || existing.userId || '',
           syncStatus: SYNC.SYNCED,
           updatedAt:  Date.now(),
         });
@@ -176,6 +228,7 @@ export async function bulkUpsertPatients(patients) {
       upserted.push({
         ...p,
         local_id:   localId,
+        userId:     uid,
         syncStatus: SYNC.SYNCED,
         updatedAt:  Date.now(),
       });
@@ -206,9 +259,11 @@ export async function markPatientFailed(local_id) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 export async function saveVisit(visit) {
+  const uid = getCurrentUserId() || visit.userId || '';
   const record = {
     ...visit,
     local_id:   visit.local_id || crypto.randomUUID(),
+    userId:     uid,
     syncStatus: visit.syncStatus ?? SYNC.PENDING,
     updatedAt:  Date.now(),
   };
@@ -267,10 +322,14 @@ export async function getVisitsForPatient(patientId) {
 }
 
 export async function getPendingVisits() {
-  return db.visits.where('syncStatus').anyOf([SYNC.PENDING, SYNC.RETRYING]).toArray();
+  const uid = getCurrentUserId();
+  if (!uid) return [];
+  return db.visits.where('syncStatus').anyOf([SYNC.PENDING, SYNC.RETRYING])
+    .and(v => v.userId === uid).toArray();
 }
 
 export async function bulkUpsertVisits(visits) {
+  const uid = getCurrentUserId() || '';
   const upserted = [];
   for (const v of visits) {
     // ── Step 1: Try primary key (local_id / UUID) lookup ─────────────────────
@@ -358,6 +417,7 @@ export async function bulkUpsertVisits(visits) {
     upserted.push({
       ...v,
       local_id:   localId,
+      userId:     uid,
       syncStatus: SYNC.SYNCED,
       updatedAt:  Date.now(),
     });
@@ -418,9 +478,11 @@ export async function markVisitFailed(local_id) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 export async function saveReminder(reminder) {
+  const uid = getCurrentUserId() || reminder.userId || '';
   const record = {
     ...reminder,
     local_id:   reminder.local_id || crypto.randomUUID(),
+    userId:     uid,
     syncStatus: reminder.syncStatus ?? SYNC.SYNCED,
     updatedAt:  Date.now(),
   };
@@ -429,12 +491,17 @@ export async function saveReminder(reminder) {
 }
 
 export async function getRemindersForDate(dateStr) {
-  const all = await db.reminders.toArray();
+  const uid = getCurrentUserId();
+  const all = uid
+    ? await db.reminders.where('userId').equals(uid).toArray()
+    : await db.reminders.toArray();
   return all.filter(r => (r.visit_date || r.date || '').startsWith(dateStr));
 }
 
 export async function getAllReminders() {
-  return db.reminders.toArray();
+  const uid = getCurrentUserId();
+  if (!uid) return [];
+  return db.reminders.where('userId').equals(uid).toArray();
 }
 
 export async function getPatientByIdOrLocalId(id) {
@@ -585,6 +652,7 @@ export async function getReminderByIdOrLocalId(id) {
 }
 
 export async function bulkUpsertReminders(reminders) {
+  const uid = getCurrentUserId() || '';
   let reconciled = 0;
   const reminderRecords = [];
   const visitRecords = [];
@@ -632,6 +700,7 @@ export async function bulkUpsertReminders(reminders) {
       reminderRecords.push({
         ...r,
         local_id:   localId,
+        userId:     uid,
         syncStatus: SYNC.SYNCED,
         updatedAt:  Date.now(),
       });
@@ -686,6 +755,7 @@ export async function bulkUpsertReminders(reminders) {
           time:       r.time || '',
           status:     r.status || 'PENDING',
           severity:   r.severity || null,
+          userId:     uid,
           syncStatus: SYNC.SYNCED,
           updatedAt:  Date.now(),
         });
@@ -750,6 +820,7 @@ export async function createReportFolder(patient) {
     return existing;
   }
 
+  const uid = getCurrentUserId() || patient.userId || '';
   const folder = {
     local_id:      crypto.randomUUID(),
     patientLocalId,
@@ -760,6 +831,7 @@ export async function createReportFolder(patient) {
     status:        patient.status || 'ACTIVE',
     health_status: patient.health_status || null,
     last_updated:  patient.createdAt || new Date().toISOString(),
+    userId:        uid,
     syncStatus:    patient.syncStatus === SYNC.SYNCED ? SYNC.SYNCED : SYNC.PENDING,
     updatedAt:     Date.now(),
     createdAt:     patient.createdAt || new Date().toISOString(),
@@ -778,7 +850,9 @@ export async function createReportFolder(patient) {
  * This also permanently removes orphan rows from IDB so they never reappear.
  */
 export async function getAllReportFolders() {
-  const all = await db.reportFolders.toArray();
+  const uid = getCurrentUserId();
+  if (!uid) return [];
+  const all = await db.reportFolders.where('userId').equals(uid).toArray();
   if (all.length === 0) return all;
 
   // Group folders by their canonical patient identity.
@@ -841,6 +915,7 @@ export async function getReportFolder(patientId) {
  * Called after GET /api/reports/patients succeeds.
  */
 export async function bulkUpsertReportFolders(serverPatients) {
+  const uid = getCurrentUserId() || '';
   let reconciled = 0;
   for (const sp of serverPatients) {
     const patientId     = String(sp.id);
@@ -881,6 +956,7 @@ export async function bulkUpsertReportFolders(serverPatients) {
         village:       sp.village      || existing.village  || '',
         status:        sp.status       || existing.status   || 'ACTIVE',
         patientId,
+        userId:        uid || existing.userId || '',
         // Preserve the UUID-based patientLocalId if we have it
         patientLocalId: existing.patientLocalId || serverLocalId || patientId,
         updatedAt:     Date.now(),
@@ -900,6 +976,7 @@ export async function bulkUpsertReportFolders(serverPatients) {
       status:        sp.status   || 'ACTIVE',
       health_status: sp.health_status || null,
       last_updated:  sp.last_updated  || new Date().toISOString(),
+      userId:        uid,
       syncStatus:    SYNC.SYNCED,
       updatedAt:     Date.now(),
       createdAt:     new Date().toISOString(),
@@ -917,11 +994,13 @@ export async function bulkUpsertReportFolders(serverPatients) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 export async function saveReportItem(report) {
+  const uid = getCurrentUserId() || report.userId || '';
   const record = {
     ...report,
     local_id:       report.local_id || crypto.randomUUID(),
     patientId:      String(report.patientId || report.patient_id || ''),
     patientLocalId: String(report.patientLocalId || ''),
+    userId:         uid,
     syncStatus:     report.syncStatus ?? SYNC.PENDING,
     createdAt:      report.createdAt || new Date().toISOString(),
     updatedAt:      Date.now(),
@@ -931,8 +1010,11 @@ export async function saveReportItem(report) {
 }
 
 export async function getReportItemsForPatient(patientId) {
+  const uid = getCurrentUserId();
   const pid = String(patientId);
-  const all = await db.reportItems.toArray();
+  const all = uid
+    ? await db.reportItems.where('userId').equals(uid).toArray()
+    : await db.reportItems.toArray();
   return all.filter(r =>
     String(r.patientId) === pid ||
     String(r.patientLocalId) === pid
@@ -940,10 +1022,14 @@ export async function getReportItemsForPatient(patientId) {
 }
 
 export async function getPendingReportItems() {
-  return db.reportItems.where('syncStatus').anyOf([SYNC.PENDING, SYNC.RETRYING]).toArray();
+  const uid = getCurrentUserId();
+  if (!uid) return [];
+  return db.reportItems.where('syncStatus').anyOf([SYNC.PENDING, SYNC.RETRYING])
+    .and(r => r.userId === uid).toArray();
 }
 
 export async function bulkUpsertReportItems(reports, patientId) {
+  const uid = getCurrentUserId() || '';
   let reconciled = 0;
   const records = [];
   for (const r of reports) {
@@ -965,6 +1051,7 @@ export async function bulkUpsertReportItems(reports, patientId) {
       ...r,
       local_id:   localId,
       patientId:  String(patientId),
+      userId:     uid,
       syncStatus: SYNC.SYNCED,
       updatedAt:  Date.now(),
     });
@@ -998,12 +1085,14 @@ export async function getPendingCount() {
   // Only count records that the CLIENT actively pushes to the server.
   // Reminders and reportFolders are server-sourced (pulled, not pushed) —
   // including them caused the "N changes waiting" false-positive after sync.
+  const uid = getCurrentUserId();
+  if (!uid) return 0;
   const [p, v, ri, imgs] = await Promise.all([
-    db.patients.where('syncStatus').anyOf([SYNC.PENDING, SYNC.RETRYING]).count(),
-    db.visits.where('syncStatus').anyOf([SYNC.PENDING, SYNC.RETRYING]).count(),
-    db.reportItems.where('syncStatus').anyOf([SYNC.PENDING, SYNC.RETRYING]).count(),
+    db.patients.where('syncStatus').anyOf([SYNC.PENDING, SYNC.RETRYING]).and(x => x.userId === uid).count(),
+    db.visits.where('syncStatus').anyOf([SYNC.PENDING, SYNC.RETRYING]).and(x => x.userId === uid).count(),
+    db.reportItems.where('syncStatus').anyOf([SYNC.PENDING, SYNC.RETRYING]).and(x => x.userId === uid).count(),
     db.prescriptionImages
-      ? db.prescriptionImages.where('syncStatus').anyOf([SYNC.PENDING, SYNC.RETRYING]).count()
+      ? db.prescriptionImages.where('syncStatus').anyOf([SYNC.PENDING, SYNC.RETRYING]).and(x => x.userId === uid).count()
       : Promise.resolve(0),
   ]);
   const total = p + v + ri + imgs;
@@ -1019,14 +1108,15 @@ export async function getPendingCount() {
  * Called by the SyncDebugPanel to render the debug UI.
  */
 export async function getFullDiagnostics() {
+  const uid = getCurrentUserId();
   const [patients, visits, reminders, reportFolders, reportItems, prescriptionImages] =
     await Promise.all([
-      db.patients.toArray(),
-      db.visits.toArray(),
-      db.reminders.toArray(),
-      db.reportFolders.toArray(),
-      db.reportItems.toArray(),
-      db.prescriptionImages?.toArray().catch(() => []) ?? Promise.resolve([]),
+      uid ? db.patients.where('userId').equals(uid).toArray() : Promise.resolve([]),
+      uid ? db.visits.where('userId').equals(uid).toArray() : Promise.resolve([]),
+      uid ? db.reminders.where('userId').equals(uid).toArray() : Promise.resolve([]),
+      uid ? db.reportFolders.where('userId').equals(uid).toArray() : Promise.resolve([]),
+      uid ? db.reportItems.where('userId').equals(uid).toArray() : Promise.resolve([]),
+      uid ? (db.prescriptionImages?.where('userId').equals(uid).toArray().catch(() => []) ?? Promise.resolve([])) : Promise.resolve([]),
     ]);
 
   const countByStatus = (arr) => arr.reduce((acc, r) => {
@@ -1072,11 +1162,13 @@ export async function getFullDiagnostics() {
  * @returns {Object} saved record with local_id
  */
 export async function savePrescriptionImage(visitLocalId, dataUrl) {
+  const uid = getCurrentUserId() || '';
   const record = {
     local_id:    crypto.randomUUID(),
     visitLocalId: String(visitLocalId),
     dataUrl,
     url:         null,   // populated after server upload
+    userId:      uid,
     syncStatus:  SYNC.PENDING,
     createdAt:   new Date().toISOString(),
     updatedAt:   Date.now(),
@@ -1094,9 +1186,11 @@ export async function getPrescriptionImagesForVisit(visitLocalId) {
 
 /** Get all pending prescription images that need to be uploaded */
 export async function getPendingPrescriptionImages() {
+  const uid = getCurrentUserId();
+  if (!uid) return [];
   return db.prescriptionImages
     .where('syncStatus').anyOf([SYNC.PENDING, SYNC.RETRYING])
-    .toArray();
+    .and(x => x.userId === uid).toArray();
 }
 
 /** After a successful server upload, store the URL and mark synced */
@@ -1470,11 +1564,24 @@ export async function deleteVisitAndRelated(visitLocalId, visitServerId) {
  * Used as the instant offline-first layer — replaced by backend data once online.
  */
 export async function getLocalDashboardAnalytics() {
+  const uid = getCurrentUserId();
+  if (!uid) {
+    return {
+      stats: {
+        totalPatients: 0, todayVisits: 0, pendingVisitsToday: 0,
+        followUpsDue: 0, overdueFollowUps: 0, highRiskCount: 0,
+        visitsCompletedCount: 0, highRisk: 0, remindersCount: 0,
+      },
+      distribution: { general: 0, maternal: 0, child: 0, chronic: 0, highRisk: 0 },
+      conditions: [], monthlyTrend: [], recentActivities: [], todaySchedule: [], alerts: [],
+    };
+  }
+
   const [patients, visits, reminders, reportItems] = await Promise.all([
-    db.patients.toArray(),
-    db.visits.toArray(),
-    db.reminders.toArray(),
-    db.reportItems.toArray(),
+    db.patients.where('userId').equals(uid).toArray(),
+    db.visits.where('userId').equals(uid).toArray(),
+    db.reminders.where('userId').equals(uid).toArray(),
+    db.reportItems.where('userId').equals(uid).toArray(),
   ]);
 
   const todayStr = new Date().toISOString().slice(0, 10);

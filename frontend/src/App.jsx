@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
+import { clearAllLocalData } from './lib/db';
 
 // Core Pages
 import Dashboard from './pages/Dashboard';
@@ -72,7 +73,15 @@ export default function App() {
     window.dispatchEvent(new CustomEvent('user-logged-in'));
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    // CRITICAL: Clear IndexedDB FIRST to prevent data leakage to the next user
+    // on the same device. clearAllLocalData() wipes all Dexie stores.
+    try {
+      await clearAllLocalData();
+    } catch (err) {
+      console.error('[App] Failed to clear local DB on logout:', err);
+    }
+
     // Preserve language preferences but fully clear all other cached data/session state
     const currentLang = localStorage.getItem('lang') || 'en';
     localStorage.clear();
