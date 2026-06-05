@@ -273,7 +273,9 @@ export async function saveVisit(visit) {
 
 export async function getVisitsForPatient(patientId) {
   // patientId can be the server id (number) or local_id (UUID string)
-  const all = await db.visits.toArray();
+  const uid = getCurrentUserId() || '';
+  if (!uid) return [];
+  const all = await db.visits.where('userId').equals(uid).toArray();
   const pid = String(patientId);
   const visits = all.filter(v => String(v.patientId) === pid || String(v.patient_id) === pid);
 
@@ -283,6 +285,55 @@ export async function getVisitsForPatient(patientId) {
 
   // Sort visits so that COMPLETED or SYNCED versions are prioritized and processed first
   const sortedForDeduplication = [...visits].sort((a, b) => {
+    if (a.status === 'COMPLETED' && b.status !== 'COMPLETED') return -1;
+    if (a.status !== 'COMPLETED' && b.status === 'COMPLETED') return 1;
+    if (a.syncStatus === SYNC.SYNCED && b.syncStatus !== SYNC.SYNCED) return -1;
+    if (a.syncStatus !== SYNC.SYNCED && b.syncStatus === SYNC.SYNCED) return 1;
+    return 0;
+  });
+
+  for (const v of sortedForDeduplication) {
+    let duplicate = false;
+
+    // 1. Check if server ID was already seen
+    if (v.id) {
+      const serverIdStr = String(v.id);
+      if (seenIds.has(serverIdStr)) {
+        duplicate = true;
+      } else {
+        seenIds.add(serverIdStr);
+      }
+    }
+
+    // 2. Check if local_id (UUID) was already seen
+    if (v.local_id) {
+      const localIdStr = String(v.local_id);
+      if (seenIds.has(localIdStr)) {
+        duplicate = true;
+      } else {
+        seenIds.add(localIdStr);
+      }
+    }
+
+    if (!duplicate) {
+      uniqueVisits.push(v);
+    }
+  }
+
+  return uniqueVisits.sort((a, b) => new Date(b.visit_date || b.date) - new Date(a.visit_date || a.date));
+}
+
+export async function getAllVisits() {
+  const uid = getCurrentUserId() || '';
+  if (!uid) return [];
+  const all = await db.visits.where('userId').equals(uid).toArray();
+
+  // ── Deduplicate visits by server ID (id) or local UUID (local_id) ──
+  const seenIds = new Set();
+  const uniqueVisits = [];
+
+  // Sort visits so that COMPLETED or SYNCED versions are prioritized and processed first
+  const sortedForDeduplication = [...all].sort((a, b) => {
     if (a.status === 'COMPLETED' && b.status !== 'COMPLETED') return -1;
     if (a.status !== 'COMPLETED' && b.status === 'COMPLETED') return 1;
     if (a.syncStatus === SYNC.SYNCED && b.syncStatus !== SYNC.SYNCED) return -1;

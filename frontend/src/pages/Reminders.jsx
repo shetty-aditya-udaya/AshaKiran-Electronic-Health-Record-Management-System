@@ -1,83 +1,15 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import toast from 'react-hot-toast';
-import { API_BASE_URL } from '../config';
-import { getAllReminders, getRemindersForDate, bulkUpsertReminders, getPatientByIdOrLocalId } from '../lib/db';
-import { useConnection } from '../context/ConnectionContext';
-import BrandLogo from '../components/BrandLogo';
+import { useReminders } from '../hooks/useReminders';
 import { useDeleteVisit } from '../hooks/useDeleteVisit';
 import DeleteVisitModal from '../components/DeleteVisitModal';
+import { SYNC } from '../lib/db';
+import BrandLogo from '../components/BrandLogo';
 
-// ─── urgency classification ───────────────────────────────────────────────────
-
-function urgencyOf(r) {
-  if (r.status === 'COMPLETED') return 'done';
-  
-  const sev = (r.severity || '').toLowerCase();
-  
-  // 1. Post-assessment clinical severity (explicitly marked by health worker)
-  if (sev === 'critical' || sev === 'emergency') return 'critical';
-  if (sev === 'severe') return 'severe';
-  if (sev === 'moderate') return 'moderate';
-  if (sev === 'mild' || sev === 'stable') return 'mild';
-  
-  // 2. Pre-assessment scheduled visits
-  const isOverdue = r.date && new Date(r.date) < new Date();
-  if (isOverdue) return 'overdue';
-  
-  return 'pending';
-}
-
-// border colour + badge style per urgency
-const URGENCY_STYLE = {
-  critical: {
-    border:     'border-red-500',
-    radioColor: 'text-red-500 opacity-60',
-    badge:      'bg-red-50 text-red-800 border border-red-200',
-    label:      'Critical Emergency',
-    btnClass:   'bg-gradient-to-br from-red-600 to-red-800 text-white shadow-md hover:shadow-red-500/20 hover:opacity-95',
-  },
-  severe: {
-    border:     'border-orange-500',
-    radioColor: 'text-orange-500 opacity-60',
-    badge:      'bg-orange-50 text-orange-800 border border-orange-200',
-    label:      'Severe Alert',
-    btnClass:   'bg-gradient-to-br from-orange-500 to-orange-700 text-white shadow-md hover:shadow-orange-500/20 hover:opacity-95',
-  },
-  moderate: {
-    border:     'border-amber-400',
-    radioColor: 'text-amber-500 opacity-60',
-    badge:      'bg-amber-50 text-amber-800 border border-amber-200',
-    label:      'Moderate Alert',
-    btnClass:   'bg-surface-container-high text-primary hover:bg-primary-container border border-outline-variant/10',
-  },
-  mild: {
-    border:     'border-emerald-400',
-    radioColor: 'text-emerald-500 opacity-60',
-    badge:      'bg-emerald-50 text-emerald-800 border border-emerald-200',
-    label:      'Stable',
-    btnClass:   'bg-surface-container-high text-primary hover:bg-primary-container border border-outline-variant/10',
-  },
-  overdue: {
-    border:     'border-slate-300',
-    radioColor: 'text-slate-400 opacity-60',
-    badge:      'bg-slate-100 text-slate-700 border border-slate-200',
-    label:      'Overdue Awaiting Visit',
-    btnClass:   'bg-gradient-to-br from-primary to-primary-dim text-on-primary shadow-lg hover:shadow-primary/20',
-  },
-  pending: {
-    border:     'border-slate-200',
-    radioColor: 'text-slate-300 opacity-60',
-    badge:      'bg-slate-50 text-slate-600 border border-slate-100',
-    label:      'Awaiting Visit',
-    btnClass:   'bg-surface-container-high text-primary hover:bg-primary-container border border-outline-variant/10',
-  },
-};
-
-// visit-type → material symbol
+// urgency-based visit type → material symbol
 function typeIcon(type) {
   const t = (type || '').toLowerCase();
-  if (t.includes('anc') || t.includes('maternal')) return 'medical_services';
+  if (t.includes('anc') || t.includes('maternal')) return 'pregnant_woman';
   if (t.includes('vacc') || t.includes('immun'))   return 'child_care';
   if (t.includes('hyper') || t.includes('bp'))     return 'vital_signs';
   if (t.includes('ncd') || t.includes('chronic'))  return 'monitor_heart';
@@ -85,433 +17,622 @@ function typeIcon(type) {
   return 'stethoscope';
 }
 
-function fmtTime(iso) {
-  if (!iso) return '';
-  try {
-    return new Date(iso).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
-  } catch { return ''; }
-}
-
-function fmtDateLabel(iso) {
-  if (!iso) return '';
-  try {
-    const d = new Date(iso);
-    const now = new Date();
-    const isOverdue = d < now && d.toDateString() !== now.toDateString();
-    const label = d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
-    return isOverdue ? `${label} (Overdue)` : label;
-  } catch { return ''; }
-}
-
-function isOverdue(iso) {
-  return iso && new Date(iso) < new Date();
-}
-
-// ─── PendingCard ─────────────────────────────────────────────────────────────
-
 function PendingCard({ r, navigate, onDeleteRequest }) {
-  const urgency = urgencyOf(r);
-  const sty     = URGENCY_STYLE[urgency] || URGENCY_STYLE.pending;
-  const timeLabel = fmtDateLabel(r.date);
-  const overdue   = isOverdue(r.date);
+  const getDaysDifferenceLabel = (visitDateStr) => {
+    if (!visitDateStr) return '';
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const visitDate = new Date(visitDateStr);
+    visitDate.setHours(0, 0, 0, 0);
+
+    const diffTime = visitDate - today;
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays < 0) {
+      const abs = Math.abs(diffDays);
+      return `${abs} day${abs > 1 ? 's' : ''} overdue`;
+    } else if (diffDays === 0) {
+      return 'today';
+    } else {
+      return `in ${diffDays} day${diffDays > 1 ? 's' : ''}`;
+    }
+  };
+
+  const statusLabel = r.computedStatus === 'overdue' ? 'OVERDUE' : r.computedStatus === 'today' ? 'TODAY' : 'UPCOMING';
+  
+  const style = {
+    overdue: {
+      border: 'border-l-red-500',
+      badge: 'bg-red-50 text-red-700 border-red-200',
+      daysBadge: 'bg-red-100 text-red-800',
+      btn: 'bg-red-600 hover:bg-red-700 text-white shadow-sm hover:shadow-red-600/20'
+    },
+    today: {
+      border: 'border-l-blue-500',
+      badge: 'bg-blue-50 text-blue-700 border-blue-200',
+      daysBadge: 'bg-blue-100 text-blue-800',
+      btn: 'bg-blue-600 hover:bg-blue-700 text-white shadow-sm hover:shadow-blue-600/20'
+    },
+    upcoming: {
+      border: 'border-l-emerald-500',
+      badge: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+      daysBadge: 'bg-emerald-100 text-emerald-800',
+      btn: 'bg-teal-600 hover:bg-teal-700 text-white shadow-sm hover:shadow-teal-600/20'
+    }
+  }[r.computedStatus] || {
+    border: 'border-l-slate-300',
+    badge: 'bg-slate-50 text-slate-700 border-slate-200',
+    daysBadge: 'bg-slate-100 text-slate-800',
+    btn: 'bg-primary text-white hover:opacity-90'
+  };
+
+  const categoryClass = {
+    pregnancy: 'chip-pregnancy',
+    chronic: 'chip-chronic',
+    childcare: 'chip-childcare',
+    general: 'chip-general'
+  }[r.patientCategory.toLowerCase()] || 'chip-general';
+
+  const formatDisplayDate = (dStr) => {
+    if (!dStr) return '';
+    try {
+      return new Date(dStr).toLocaleDateString('en-IN', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric'
+      });
+    } catch { return dStr; }
+  };
 
   return (
     <div
-      className={`bg-surface-container-lowest rounded-lg p-6 shadow-sm border-l-8 ${sty.border} flex flex-col md:flex-row items-center gap-6 group hover:shadow-md transition-shadow`}
+      className={`glass-card p-6 border-l-8 ${style.border} flex flex-col md:flex-row items-start md:items-center justify-between gap-6 hover:-translate-y-0.5 transition-all`}
     >
-      {/* Radio icon */}
-      <div className="flex-shrink-0">
-        <span className={`material-symbols-outlined text-4xl ${sty.radioColor}`}>
-          radio_button_unchecked
-        </span>
-      </div>
+      <div className="flex-grow space-y-3 min-w-0 w-full">
+        {/* Row 1: Badges & Patient Name */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          <h3 className="text-xl font-bold text-slate-800 leading-none">{r.patientName}</h3>
+          
+          <span className={`px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-full border ${style.badge}`}>
+            {statusLabel}
+          </span>
+          
+          <span className={`px-2.5 py-0.5 text-[10px] font-medium rounded-full ${style.daysBadge}`}>
+            {getDaysDifferenceLabel(r.visit_date)}
+          </span>
 
-      {/* Content */}
-      <div className="flex-grow space-y-1 min-w-0 w-full">
-        <div className="flex flex-wrap items-center gap-3">
-          <h3 className="text-xl font-headline font-bold text-on-surface">{r.patient}</h3>
-          <span className={`px-3 py-1 text-[10px] font-body font-bold uppercase tracking-wider rounded-full ${sty.badge}`}>
-            {sty.label}
+          <span className={`px-2.5 py-0.5 text-[10px] font-medium rounded-full border ${categoryClass}`}>
+            {r.patientCategory}
           </span>
         </div>
-        <div className="flex flex-wrap gap-4 text-on-surface-variant text-sm font-body">
-          <span className="flex items-center gap-1">
-            <span className="material-symbols-outlined text-base">{typeIcon(r.type)}</span>
-            {r.type || 'General Visit'}
+
+        {/* Row 2: Visit Type, Village, Date/Time */}
+        <div className="flex flex-wrap items-center gap-y-2 gap-x-4 text-slate-500 text-sm font-body">
+          <span className="flex items-center gap-1.5">
+            <span className="material-symbols-outlined text-base text-primary">{typeIcon(r.visit_type)}</span>
+            {r.visit_type || 'General'}
           </span>
-          <span className={`flex items-center gap-1 font-semibold ${overdue ? 'text-error' : 'text-primary'}`}>
-            <span className="material-symbols-outlined text-base">schedule</span>
-            {timeLabel}
+          <span className="flex items-center gap-1.5">
+            <span className="material-symbols-outlined text-base">location_on</span>
+            {r.village}
           </span>
+          <span className="flex items-center gap-1.5 font-medium text-slate-700">
+            <span className="material-symbols-outlined text-base">calendar_today</span>
+            {formatDisplayDate(r.visit_date)} at {r.time}
+          </span>
+          {r.syncStatus === SYNC.PENDING && (
+            <span className="flex items-center gap-1.5 text-amber-600 font-bold bg-amber-50 px-2 py-0.5 rounded-lg text-xs">
+              <span className="material-symbols-outlined text-base animate-pulse">cloud_queue</span>
+              Offline Pending
+            </span>
+          )}
         </div>
+
+        {/* Row 3: Remarks/Notes */}
+        {r.notes && (
+          <p className="text-xs text-slate-500 bg-slate-50 border border-slate-100 p-2.5 rounded-xl max-w-2xl truncate">
+            <strong className="text-slate-600 mr-1">Notes:</strong> {r.notes}
+          </p>
+        )}
       </div>
 
-      {/* Action */}
-      <div className="flex-shrink-0 w-full md:w-auto flex items-center gap-2">
+      {/* Row 4: CTAs */}
+      <div className="flex items-center gap-3 w-full md:w-auto flex-shrink-0">
         <button
           onClick={() => navigate(`/visits/${r.local_id || r.id}/complete`)}
-          className={`flex-1 md:flex-initial px-8 py-3 rounded-full font-body font-bold transition-all active:scale-95 ${sty.btnClass}`}
+          className={`flex-grow md:flex-none px-6 py-2.5 rounded-xl font-bold text-sm transition-all active:scale-95 flex items-center justify-center gap-2 ${style.btn}`}
         >
+          <span className="material-symbols-outlined text-lg">edit_document</span>
           Start Visit
         </button>
         {onDeleteRequest && (
           <button
-            onClick={() => onDeleteRequest({ ...r, visit_date: r.date, visit_type: r.type, patient_name: r.patient })}
+            onClick={() => onDeleteRequest({ ...r, visit_date: r.visit_date, visit_type: r.visit_type, patient_name: r.patientName })}
             aria-label="Delete visit"
             title="Delete this visit"
-            className="w-10 h-10 flex items-center justify-center rounded-full bg-white border border-slate-200 text-slate-400 hover:bg-rose-50 hover:text-rose-500 hover:border-rose-100 transition-all active:scale-90"
+            className="w-10 h-10 flex items-center justify-center rounded-xl bg-white border border-slate-200 text-slate-400 hover:bg-rose-50 hover:text-rose-500 hover:border-rose-100 transition-all active:scale-90"
           >
-            <span className="material-symbols-outlined text-[18px]">delete</span>
+            <span className="material-symbols-outlined text-lg">delete</span>
           </button>
         )}
       </div>
-
     </div>
   );
 }
-
-// ─── CompletedCard ───────────────────────────────────────────────────────────
 
 function CompletedCard({ r, navigate, onDeleteRequest }) {
+  const categoryClass = {
+    pregnancy: 'chip-pregnancy',
+    chronic: 'chip-chronic',
+    childcare: 'chip-childcare',
+    general: 'chip-general'
+  }[r.patientCategory.toLowerCase()] || 'chip-general';
+
+  const formatDisplayDate = (dStr) => {
+    if (!dStr) return '';
+    try {
+      return new Date(dStr).toLocaleDateString('en-IN', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric'
+      });
+    } catch { return dStr; }
+  };
+
   return (
     <div
-      className="bg-surface-container-low/50 rounded-lg p-4 flex items-center gap-4 opacity-70 cursor-pointer hover:opacity-100 transition-opacity"
+      className="glass-card p-6 border-l-8 border-l-slate-400 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 hover:-translate-y-0.5 transition-all opacity-95 hover:opacity-100"
     >
-      <div
-        onClick={() => navigate(`/reports/${r.patient_id}`)}
-        role="button"
-        tabIndex={0}
-        onKeyDown={(e) => e.key === 'Enter' && navigate(`/reports/${r.patient_id}`)}
-        className="flex items-center gap-4 flex-1 min-w-0"
-      >
-        <div className="bg-primary/20 p-2 rounded-full flex-shrink-0">
-          <span
-            className="material-symbols-outlined text-primary"
-            style={{ fontVariationSettings: "'FILL' 1" }}
-          >
-            check_circle
+      <div className="flex-grow space-y-3 min-w-0 w-full">
+        {/* Row 1: Badges & Patient Name */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          <h3 className="text-xl font-bold text-slate-700 leading-none">{r.patientName}</h3>
+          
+          <span className="px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-full border bg-slate-100 text-slate-600 border-slate-200">
+            COMPLETED
+          </span>
+
+          <span className={`px-2.5 py-0.5 text-[10px] font-medium rounded-full border ${categoryClass}`}>
+            {r.patientCategory}
           </span>
         </div>
-        <div className="flex-1 min-w-0">
-          <p className="font-body font-bold text-on-surface leading-tight truncate">{r.patient}</p>
-          <p className="text-xs text-on-surface-variant font-body">
-            {r.type || 'General Visit'} • {fmtTime(r.date)}
-          </p>
+
+        {/* Row 2: Visit Type, Village, Date/Time */}
+        <div className="flex flex-wrap items-center gap-y-2 gap-x-4 text-slate-500 text-sm font-body">
+          <span className="flex items-center gap-1.5">
+            <span className="material-symbols-outlined text-base text-primary">{typeIcon(r.visit_type)}</span>
+            {r.visit_type || 'General'}
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="material-symbols-outlined text-base">location_on</span>
+            {r.village}
+          </span>
+          <span className="flex items-center gap-1.5 font-medium text-slate-700">
+            <span className="material-symbols-outlined text-base">check_circle</span>
+            Completed on {formatDisplayDate(r.visit_date)}
+          </span>
         </div>
-        <span className="material-symbols-outlined text-outline flex-shrink-0">chevron_right</span>
+
+        {/* Row 3: Remarks/Notes */}
+        {r.notes && (
+          <p className="text-xs text-slate-500 bg-slate-50 border border-slate-100 p-2.5 rounded-xl max-w-2xl truncate">
+            <strong className="text-slate-600 mr-1">Remarks:</strong> {r.notes}
+          </p>
+        )}
       </div>
-      {onDeleteRequest && (
+
+      {/* Row 4: CTAs */}
+      <div className="flex items-center gap-3 w-full md:w-auto flex-shrink-0">
         <button
-          onClick={() => onDeleteRequest({ ...r, visit_date: r.date, visit_type: r.type, patient_name: r.patient })}
-          aria-label="Delete visit"
-          title="Delete this visit"
-          className="w-8 h-8 flex items-center justify-center rounded-full text-slate-300 hover:bg-rose-50 hover:text-rose-500 transition-all active:scale-90 flex-shrink-0"
+          onClick={() => navigate(`/reports/${r.patientId}`)}
+          className="flex-grow md:flex-none px-6 py-2.5 rounded-xl font-bold text-sm bg-slate-100 text-slate-700 hover:bg-slate-200 hover:text-slate-800 transition-all active:scale-95 flex items-center justify-center gap-2"
         >
-          <span className="material-symbols-outlined text-[16px]">delete</span>
+          <span className="material-symbols-outlined text-lg">visibility</span>
+          View Record
         </button>
-      )}
+        {onDeleteRequest && (
+          <button
+            onClick={() => onDeleteRequest({ ...r, visit_date: r.visit_date, visit_type: r.visit_type, patient_name: r.patientName })}
+            aria-label="Delete visit"
+            title="Delete this visit"
+            className="w-10 h-10 flex items-center justify-center rounded-xl bg-white border border-slate-200 text-slate-400 hover:bg-rose-50 hover:text-rose-500 hover:border-rose-100 transition-all active:scale-90"
+          >
+            <span className="material-symbols-outlined text-lg">delete</span>
+          </button>
+        )}
+      </div>
     </div>
   );
 }
 
-// ─── main component ───────────────────────────────────────────────────────────
+const getLocalDateString = (d) => {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
-export default function Reminders({ t }) {
+const getStartOfWeek = (d) => {
+  const day = d.getDay();
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+  return new Date(d.setDate(diff));
+};
+
+export default function Reminders({ t = (k, def) => def }) {
   const navigate = useNavigate();
-  const { isServerReachable } = useConnection();
+  const { reminders, stats, loading, refresh, fetchFromServer } = useReminders();
 
-  const [reminders, setReminders]   = useState([]);
-  const [loading, setLoading]       = useState(true);
-  const [targetDate, setTargetDate] = useState(new Date().toISOString().split('T')[0]);
-  const [showAll, setShowAll]       = useState(false);
-  const [activeTab, setActiveTab]   = useState('pending');
+  const [activeTab, setActiveTab] = useState('pending');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [dateFilter, setDateFilter] = useState('all'); // 'all', 'today', 'yesterday', 'this-week', 'this-month', 'custom'
+  const [customStart, setCustomStart] = useState('');
+  const [customEnd, setCustomEnd] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('all'); // 'all', 'pregnancy', 'chronic', 'childcare', 'general'
+  const [statusFilter, setStatusFilter] = useState('all'); // 'all', 'overdue', 'today', 'upcoming'
 
   const { deleteTarget, isDeleting, requestDelete, cancelDelete, confirmDelete } =
-    useDeleteVisit({ onDeleted: () => fetchReminders() });
+    useDeleteVisit({ onDeleted: refresh });
 
-  // ── fetch ───────────────────────────────────────────────────────────────────
-  const fetchReminders = useCallback(async () => {
-    setLoading(true);
-    try {
-      // 1. Always load from local IndexedDB first for instant UI response
-      let localData = [];
-      if (showAll) {
-        localData = await getAllReminders();
-      } else {
-        localData = await getRemindersForDate(targetDate);
-      }
-      
-      // Map localData to have consistent patient names
-      const mappedLocal = [];
-      for (const r of localData) {
-        let patientName = r.patient;
-        if (!patientName) {
-          const patient = await getPatientByIdOrLocalId(r.patient_id || r.patientId);
-          patientName = patient ? patient.name : 'Unknown Patient';
-        }
-        mappedLocal.push({
-          ...r,
-          id: r.id || r.local_id, // ensure ID is set for routing/key
-          patient: patientName,
-        });
-      }
-
-      // Sort: overdue PENDING first, then pending, then completed
-      mappedLocal.sort((a, b) => {
-        const aPending = a.status !== 'COMPLETED';
-        const bPending = b.status !== 'COMPLETED';
-        if (aPending && !bPending) return -1;
-        if (!aPending && bPending) return 1;
-        return new Date(a.date) - new Date(b.date);
-      });
-
-      setReminders(mappedLocal);
-      setLoading(false); // Stop loading skeleton since we have cached data
-
-      // 2. If online, fetch from backend in the background to update the local db
-      if (isServerReachable) {
-        const token = localStorage.getItem('token');
-        const url   = showAll
-          ? `${API_BASE_URL}/api/reminders/all`
-          : `${API_BASE_URL}/api/reminders?date=${targetDate}`;
-        
-        const res = await fetch(url, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-        
-        if (res.ok) {
-          const data = await res.json();
-          const serverReminders = Array.isArray(data) ? data : [];
-          
-          // Bulk-upsert into local IndexedDB
-          await bulkUpsertReminders(serverReminders);
-          
-          // Load from IndexedDB again to show the most up-to-date synced data
-          let freshLocal = [];
-          if (showAll) {
-            freshLocal = await getAllReminders();
-          } else {
-            freshLocal = await getRemindersForDate(targetDate);
-          }
-          
-          const freshMapped = [];
-          for (const r of freshLocal) {
-            let patientName = r.patient;
-            if (!patientName) {
-              const patient = await getPatientByIdOrLocalId(r.patient_id || r.patientId);
-              patientName = patient ? patient.name : 'Unknown Patient';
-            }
-            freshMapped.push({
-              ...r,
-              id: r.id || r.local_id,
-              patient: patientName,
-            });
-          }
-          
-          freshMapped.sort((a, b) => {
-            const aPending = a.status !== 'COMPLETED';
-            const bPending = b.status !== 'COMPLETED';
-            if (aPending && !bPending) return -1;
-            if (!aPending && bPending) return 1;
-            return new Date(a.date) - new Date(b.date);
-          });
-          
-          setReminders(freshMapped);
-        }
-      }
-    } catch (err) {
-      console.warn("Failed to fetch reminders online/offline", err);
-    } finally {
-      setLoading(false);
+  // ── Client-side Filter Logic ────────────────────────────────────────────────
+  const filteredReminders = reminders.filter(r => {
+    // 1. Tab Separation
+    if (activeTab === 'pending') {
+      if (r.status === 'COMPLETED') return false;
+    } else {
+      if (r.status !== 'COMPLETED') return false;
     }
-  }, [targetDate, showAll, isServerReachable]);
 
-  useEffect(() => { fetchReminders(); }, [fetchReminders]);
+    // 2. Search Query
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      const matchesSearch = 
+        (r.patientName || '').toLowerCase().includes(q) ||
+        (r.village || '').toLowerCase().includes(q) ||
+        (r.visit_type || '').toLowerCase().includes(q) ||
+        (r.notes || '').toLowerCase().includes(q);
+      if (!matchesSearch) return false;
+    }
 
-  // re-fetch when tab regains focus or when local database writes occur
-  useEffect(() => {
-    const handleUpdate = () => fetchReminders();
-    window.addEventListener('focus',               handleUpdate);
-    window.addEventListener('local-data-written',  handleUpdate);
-    window.addEventListener('visit-added',         handleUpdate);
-    window.addEventListener('visit-completed',     handleUpdate);
-    window.addEventListener('visit-deleted',       handleUpdate);
-    return () => {
-      window.removeEventListener('focus',               handleUpdate);
-      window.removeEventListener('local-data-written',  handleUpdate);
-      window.removeEventListener('visit-added',         handleUpdate);
-      window.removeEventListener('visit-completed',     handleUpdate);
-      window.removeEventListener('visit-deleted',       handleUpdate);
-    };
-  }, [fetchReminders]);
+    // 3. Category Filter
+    if (categoryFilter !== 'all') {
+      if ((r.patientCategory || '').toLowerCase() !== categoryFilter.toLowerCase()) return false;
+    }
 
-  // ── derived ─────────────────────────────────────────────────────────────────
-  const pending   = reminders.filter((r) => r.status !== 'COMPLETED');
-  const completed = reminders.filter((r) => r.status === 'COMPLETED');
+    // 4. Status Filter (Only applies to Pending tab)
+    if (activeTab === 'pending' && statusFilter !== 'all') {
+      if (r.computedStatus !== statusFilter) return false;
+    }
 
-  const displayDate = new Date(targetDate).toLocaleDateString('en-IN', {
-    day: 'numeric', month: 'short', year: 'numeric',
+    // 5. Date Filter
+    if (dateFilter !== 'all') {
+      const todayStr = getLocalDateString(new Date());
+      const visitDate = r.visit_date; // YYYY-MM-DD
+
+      if (dateFilter === 'today') {
+        if (visitDate !== todayStr) return false;
+      } else if (dateFilter === 'yesterday') {
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayStr = getLocalDateString(yesterday);
+        if (visitDate !== yesterdayStr) return false;
+      } else if (dateFilter === 'this-week') {
+        const monday = getStartOfWeek(new Date());
+        monday.setHours(0, 0, 0, 0);
+        const sunday = new Date(monday);
+        sunday.setDate(sunday.getDate() + 6);
+        sunday.setHours(23, 59, 59, 999);
+
+        if (!visitDate) return false;
+        const vDateObj = new Date(visitDate);
+        if (vDateObj < monday || vDateObj > sunday) return false;
+      } else if (dateFilter === 'this-month') {
+        const today = new Date();
+        const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+        const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999);
+
+        if (!visitDate) return false;
+        const vDateObj = new Date(visitDate);
+        if (vDateObj < firstDay || vDateObj > lastDay) return false;
+      } else if (dateFilter === 'custom') {
+        if (!visitDate) return false;
+        if (customStart && visitDate < customStart) return false;
+        if (customEnd && visitDate > customEnd) return false;
+      }
+    }
+
+    return true;
   });
 
-  // ── render ──────────────────────────────────────────────────────────────────
+  // Count filtered lists to show in tabs dynamically
+  const pendingCount = reminders.filter(r => r.status !== 'COMPLETED').length;
+  const completedCount = reminders.filter(r => r.status === 'COMPLETED').length;
+
   return (
     <div className="max-w-screen-xl mx-auto px-6 pt-10 pb-28 font-body">
 
       {/* ── Hero ───────────────────────────────────────────────────────────── */}
-      <div className="mb-10">
-        <h1 className="text-5xl font-headline font-bold tracking-tight text-on-surface mb-2">
-          Reminders
-        </h1>
-        <p className="text-on-surface-variant text-lg font-light">
-          Prioritized by urgency and timing
-        </p>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
+        <div>
+          <h1 className="text-5xl font-headline font-bold tracking-tight text-slate-800 mb-2">
+            {t('reminders', 'Reminders')}
+          </h1>
+          <p className="text-slate-500 text-lg font-light">
+            Dynamic visit scheduling and tracking system
+          </p>
+        </div>
+
+        {/* Sync/Refresh Action */}
+        <button
+          onClick={async () => {
+            await fetchFromServer();
+          }}
+          aria-label="Sync Reminders"
+          title="Sync Reminders"
+          className="btn-primary self-start md:self-auto flex items-center justify-center gap-2"
+        >
+          <span className="material-symbols-outlined text-lg">sync</span>
+          Sync Reminders
+        </button>
       </div>
 
-      {/* ── Filter bar ─────────────────────────────────────────────────────── */}
-      <div className="bg-surface-container-low p-4 rounded-xl mb-8 flex flex-wrap md:flex-nowrap items-center gap-4 shadow-sm">
+      {/* ── Stats Bar ─────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
+        {/* Total Card */}
+        <div className="glass-card p-5 relative overflow-hidden flex flex-col justify-between min-h-[110px]">
+          <div className="flex justify-between items-start">
+            <span className="text-slate-500 text-xs font-bold uppercase tracking-wider">Total</span>
+            <span className="material-symbols-outlined text-slate-400 text-xl">event_note</span>
+          </div>
+          <span className="text-3xl font-extrabold text-slate-800 mt-2">{loading ? 'NA' : stats.total}</span>
+        </div>
 
-        {/* Date picker */}
-        <label
-          htmlFor="reminder-date"
-          className="flex items-center bg-surface-container-lowest px-4 py-2 rounded-full grow md:grow-0 gap-3 border border-outline-variant/10 cursor-pointer"
-        >
-          <span className="material-symbols-outlined text-primary">calendar_month</span>
-          <input
-            id="reminder-date"
-            type="date"
-            value={targetDate}
-            onChange={(e) => { setTargetDate(e.target.value); setShowAll(false); }}
-            className="bg-transparent border-none text-sm font-body font-medium text-on-surface outline-none cursor-pointer"
-          />
-        </label>
+        {/* Overdue Card */}
+        <div className="glass-card p-5 border-l-4 border-l-red-500 relative overflow-hidden flex flex-col justify-between min-h-[110px]">
+          <div className="flex justify-between items-start">
+            <span className="text-red-500 text-xs font-bold uppercase tracking-wider">Overdue</span>
+            <span className="material-symbols-outlined text-red-400 text-xl animate-pulse">warning</span>
+          </div>
+          <span className="text-3xl font-extrabold text-red-600 mt-2">{loading ? 'NA' : stats.overdue}</span>
+        </div>
 
-        {/* All visits toggle */}
-        <button
-          onClick={() => setShowAll((v) => !v)}
-          className={`flex items-center bg-surface-container-lowest px-4 py-2 rounded-full grow md:grow-0 gap-3 border transition-all ${
-            showAll
-              ? 'border-primary bg-primary-container/20 text-primary'
-              : 'border-outline-variant/10 text-on-surface-variant hover:border-primary/30'
-          }`}
-        >
-          <span className="material-symbols-outlined text-primary">priority_high</span>
-          <span className="font-medium text-sm">{showAll ? 'All Visits' : 'By Date'}</span>
-          <span className="material-symbols-outlined text-outline">expand_more</span>
-        </button>
+        {/* Today Card */}
+        <div className="glass-card p-5 border-l-4 border-l-blue-500 relative overflow-hidden flex flex-col justify-between min-h-[110px]">
+          <div className="flex justify-between items-start">
+            <span className="text-blue-500 text-xs font-bold uppercase tracking-wider">Today</span>
+            <span className="material-symbols-outlined text-blue-400 text-xl">today</span>
+          </div>
+          <span className="text-3xl font-extrabold text-blue-600 mt-2">{loading ? 'NA' : stats.today}</span>
+        </div>
 
-        {/* Refresh */}
-        <div className="ml-auto flex items-center gap-2">
-          <button
-            onClick={fetchReminders}
-            aria-label="Refresh reminders"
-            className="bg-primary-container text-on-primary-container p-3 rounded-full flex items-center justify-center transition-transform active:scale-95 shadow-sm hover:opacity-90"
-          >
-            <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>
-              notifications_active
-            </span>
-          </button>
+        {/* Upcoming Card */}
+        <div className="glass-card p-5 border-l-4 border-l-emerald-500 relative overflow-hidden flex flex-col justify-between min-h-[110px]">
+          <div className="flex justify-between items-start">
+            <span className="text-emerald-500 text-xs font-bold uppercase tracking-wider">Upcoming</span>
+            <span className="material-symbols-outlined text-emerald-400 text-xl">event_upcoming</span>
+          </div>
+          <span className="text-3xl font-extrabold text-emerald-600 mt-2">{loading ? 'NA' : stats.upcoming}</span>
+        </div>
+
+        {/* Completed Card */}
+        <div className="glass-card p-5 border-l-4 border-l-slate-400 relative overflow-hidden flex flex-col justify-between min-h-[110px]">
+          <div className="flex justify-between items-start">
+            <span className="text-slate-500 text-xs font-bold uppercase tracking-wider">Completed</span>
+            <span className="material-symbols-outlined text-slate-400 text-xl">task_alt</span>
+          </div>
+          <span className="text-3xl font-extrabold text-slate-700 mt-2">{loading ? 'NA' : stats.completed}</span>
         </div>
       </div>
 
-      {/* ── Segmented tabs ─────────────────────────────────────────────────── */}
-      <div className="flex gap-4 mb-10 overflow-x-auto pb-2">
+      {/* ── Segmented Tabs ─────────────────────────────────────────────────── */}
+      <div className="flex bg-slate-100 p-1.5 rounded-2xl mb-8 max-w-sm">
         <button
-          onClick={() => setActiveTab('pending')}
-          className={`flex items-center gap-3 px-6 py-3 rounded-full border transition-all whitespace-nowrap ${
+          onClick={() => {
+            setActiveTab('pending');
+            setStatusFilter('all');
+          }}
+          className={`flex-1 py-3 text-center rounded-xl font-bold text-sm transition-all ${
             activeTab === 'pending'
-              ? 'bg-tertiary-container/50 border-primary-container/20 font-bold text-on-surface'
-              : 'bg-surface-container-high border-transparent hover:bg-surface-container-highest font-medium text-on-surface-variant'
+              ? 'bg-white text-slate-800 shadow-sm'
+              : 'text-slate-500 hover:text-slate-700'
           }`}
         >
-          <span className={`w-3 h-3 rounded-full ring-4 ${loading ? 'bg-outline-variant ring-outline-variant/10' : 'bg-primary ring-primary/10'}`} />
-          {loading ? '…' : pending.length} Pending
+          Pending ({loading ? '…' : pendingCount})
         </button>
         <button
-          onClick={() => setActiveTab('done')}
-          className={`flex items-center gap-3 px-6 py-3 rounded-full border transition-all whitespace-nowrap ${
+          onClick={() => {
+            setActiveTab('done');
+          }}
+          className={`flex-1 py-3 text-center rounded-xl font-bold text-sm transition-all ${
             activeTab === 'done'
-              ? 'bg-tertiary-container/50 border-primary-container/20 font-bold text-on-surface'
-              : 'bg-surface-container-high border-transparent hover:bg-surface-container-highest font-medium text-on-surface-variant'
+              ? 'bg-white text-slate-800 shadow-sm'
+              : 'text-slate-500 hover:text-slate-700'
           }`}
         >
-          <span className="w-3 h-3 rounded-full bg-primary ring-4 ring-primary/10" />
-          {loading ? '…' : completed.length} Completed
+          Completed ({loading ? '…' : completedCount})
         </button>
       </div>
 
-      {/* ── Loading skeletons ───────────────────────────────────────────────── */}
+      {/* ── Filter Bar ─────────────────────────────────────────────────────── */}
+      <div className="glass-card p-6 mb-8 space-y-4">
+        {/* Search & Date Filter Selection */}
+        <div className="flex flex-col lg:flex-row gap-4 items-stretch lg:items-center justify-between">
+          <div className="relative flex-grow">
+            <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
+              search
+            </span>
+            <input
+              type="text"
+              placeholder="Search by name, village, type, notes..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-slate-100/50 hover:bg-slate-100 focus:bg-white text-slate-800 pl-12 pr-10 py-3 rounded-2xl border border-slate-200/50 focus:border-primary/50 outline-none transition-all font-body text-sm"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 rounded-full hover:bg-slate-200/50 transition-all"
+              >
+                <span className="material-symbols-outlined text-lg">close</span>
+              </button>
+            )}
+          </div>
+
+          {/* Quick Date Selector */}
+          <div className="flex flex-wrap items-center bg-slate-100/50 rounded-2xl border border-slate-200/40 p-1 self-start lg:self-auto overflow-x-auto max-w-full">
+            {['all', 'today', 'yesterday', 'this-week', 'this-month', 'custom'].map((dOpt) => (
+              <button
+                key={dOpt}
+                onClick={() => {
+                  setDateFilter(dOpt);
+                }}
+                className={`px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all whitespace-nowrap ${
+                  dateFilter === dOpt
+                    ? 'bg-primary text-white shadow-sm'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                {dOpt === 'this-week' ? 'Week' : dOpt === 'this-month' ? 'Month' : dOpt}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Custom Date Inputs if custom is selected */}
+        {dateFilter === 'custom' && (
+          <div className="flex flex-wrap items-center gap-3 bg-slate-50/50 p-3 rounded-2xl border border-slate-200/50 animate-fadeIn">
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Date Range:</span>
+            <input
+              type="date"
+              value={customStart}
+              onChange={(e) => setCustomStart(e.target.value)}
+              className="bg-white border border-slate-200 px-3 py-1.5 rounded-xl text-sm outline-none text-slate-700"
+            />
+            <span className="text-slate-400 text-sm">to</span>
+            <input
+              type="date"
+              value={customEnd}
+              onChange={(e) => setCustomEnd(e.target.value)}
+              className="bg-white border border-slate-200 px-3 py-1.5 rounded-xl text-sm outline-none text-slate-700"
+            />
+            {(customStart || customEnd) && (
+              <button
+                onClick={() => {
+                  setCustomStart('');
+                  setCustomEnd('');
+                }}
+                className="text-xs text-rose-600 font-bold hover:underline ml-auto"
+              >
+                Clear Range
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Filter Chips for Category and Status */}
+        <div className="flex flex-col gap-3 pt-3 border-t border-slate-100">
+          {/* Category Chips */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mr-2">Category:</span>
+            {['all', 'pregnancy', 'chronic', 'childcare', 'general'].map((cat) => (
+              <button
+                key={cat}
+                onClick={() => setCategoryFilter(cat)}
+                className={`px-3.5 py-1 rounded-full text-xs font-semibold border transition-all ${
+                  categoryFilter === cat
+                    ? 'bg-teal-700 text-white border-teal-700 shadow-sm'
+                    : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
+                }`}
+              >
+                {cat.charAt(0).toUpperCase() + cat.slice(1)}
+              </button>
+            ))}
+          </div>
+
+          {/* Status Chips (only for pending tab) */}
+          {activeTab === 'pending' && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mr-2">Status:</span>
+              {['all', 'overdue', 'today', 'upcoming'].map((st) => (
+                <button
+                  key={st}
+                  onClick={() => setStatusFilter(st)}
+                  className={`px-3.5 py-1 rounded-full text-xs font-semibold border transition-all ${
+                    statusFilter === st
+                      ? st === 'overdue'
+                        ? 'bg-red-500 text-white border-red-500 shadow-sm'
+                        : st === 'today'
+                        ? 'bg-blue-500 text-white border-blue-500 shadow-sm'
+                        : 'bg-emerald-500 text-white border-emerald-500 shadow-sm'
+                      : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  {st.charAt(0).toUpperCase() + st.slice(1)}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Loading Skeletons ───────────────────────────────────────────────── */}
       {loading && (
         <div className="space-y-6">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-28 bg-surface-container rounded-lg animate-pulse border-l-8 border-outline-variant/30" />
+            <div key={i} className="h-28 bg-surface-container rounded-2xl animate-pulse border-l-8 border-slate-200/50" />
           ))}
         </div>
       )}
 
-      {/* ── Pending tab ────────────────────────────────────────────────────── */}
-      {!loading && activeTab === 'pending' && (
+      {/* ── List Content ───────────────────────────────────────────────────── */}
+      {!loading && (
         <>
-          {pending.length === 0 ? (
-            /* All caught up */
-            <div className="mt-12 flex flex-col items-center justify-center text-center p-12 bg-surface-container-lowest rounded-xl border border-dashed border-outline-variant">
-              <div className="bg-teal-50/50 w-24 h-24 rounded-full flex items-center justify-center mb-6 border border-teal-100/50 shadow-inner">
-                <BrandLogo compact={true} size="md" className="opacity-75 select-none pointer-events-none animate-bounce" />
+          {filteredReminders.length === 0 ? (
+            /* Empty State */
+            <div className="mt-12 flex flex-col items-center justify-center text-center p-12 bg-white rounded-3xl border border-dashed border-slate-200 shadow-sm">
+              <div className="w-24 h-24 rounded-full flex items-center justify-center mb-6 bg-slate-50 border border-slate-100 shadow-inner">
+                {activeTab === 'pending' ? (
+                  <svg className="w-10 h-10 text-teal-600/70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                  </svg>
+                ) : (
+                  <svg className="w-10 h-10 text-amber-500/70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                  </svg>
+                )}
               </div>
-              <h3 className="text-2xl font-headline font-bold text-on-surface mb-2">All Caught Up!</h3>
-              <p className="text-on-surface-variant max-w-md mx-auto font-body">
-                {showAll
-                  ? 'No visits have been scheduled yet.'
-                  : `No pending visits for ${displayDate}. Take a moment to review your records.`}
+              <h3 className="text-2xl font-bold text-slate-700 mb-2">
+                {activeTab === 'pending' ? 'No Pending Visits' : 'No Completed Visits'}
+              </h3>
+              <p className="text-slate-400 max-w-md mx-auto text-sm mb-6">
+                {activeTab === 'pending' 
+                  ? 'All caught up! No scheduled visits match your current filters.' 
+                  : 'Complete scheduled visits and they will show up in this history tab.'}
               </p>
-              <button
-                onClick={() => setShowAll(true)}
-                className="mt-8 px-6 py-2 bg-secondary text-on-secondary rounded-full font-body font-medium"
-              >
-                View All Visits
-              </button>
+              {activeTab === 'pending' && (
+                <button
+                  onClick={() => navigate('/')}
+                  className="btn-primary"
+                >
+                  <span className="material-symbols-outlined text-lg">add_circle</span>
+                  Schedule a Visit
+                </button>
+              )}
             </div>
           ) : (
             <div className="space-y-6">
-              {pending.map((r) => (
-                <PendingCard key={r.id} r={r} navigate={navigate} onDeleteRequest={requestDelete} />
-              ))}
+              {activeTab === 'pending'
+                ? filteredReminders.map((r) => (
+                    <PendingCard key={r.local_id || r.id} r={r} navigate={navigate} onDeleteRequest={requestDelete} />
+                  ))
+                : filteredReminders.map((r) => (
+                    <CompletedCard key={r.local_id || r.id} r={r} navigate={navigate} onDeleteRequest={requestDelete} />
+                  ))}
             </div>
           )}
         </>
       )}
 
-      {/* ── Completed tab ───────────────────────────────────────────────────── */}
-      {!loading && activeTab === 'done' && (
-        <>
-          {/* Section heading */}
-          <div className="flex items-center gap-4 mb-8">
-            <h2 className="text-2xl font-headline font-bold text-on-surface/50 whitespace-nowrap">
-              Completed {showAll ? '' : 'Today'}
-            </h2>
-            <div className="h-px flex-grow bg-outline-variant/30" />
-          </div>
-
-          {completed.length === 0 ? (
-            <div className="mt-4 flex flex-col items-center justify-center text-center p-12 bg-surface-container-lowest rounded-xl border border-dashed border-outline-variant">
-              <div className="bg-teal-50/50 w-24 h-24 rounded-full flex items-center justify-center mb-6 border border-teal-100/50 shadow-inner">
-                <BrandLogo compact={true} size="md" className="opacity-40 select-none pointer-events-none" />
-              </div>
-              <h3 className="text-2xl font-headline font-bold text-on-surface mb-2">No Completed Visits</h3>
-              <p className="text-on-surface-variant max-w-md mx-auto font-body">
-                Complete pending visits and they will appear here.
-              </p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {completed.map((r) => (
-                <CompletedCard key={r.id} r={r} navigate={navigate} onDeleteRequest={requestDelete} />
-              ))}
-            </div>
-          )}
-        </>
-      )}
-      
-      {/* Delete visit modal */}
+      {/* Delete Visit Confirmation Modal */}
       {deleteTarget && (
         <DeleteVisitModal
           visit={deleteTarget}

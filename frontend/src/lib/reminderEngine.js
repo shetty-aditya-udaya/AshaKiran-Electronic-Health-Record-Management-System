@@ -56,7 +56,7 @@ export async function createLocalReminder(visit, patient) {
     updatedAt:  Date.now(),
   };
 
-  await db.reminders.put(reminder);
+  await saveReminder(reminder);
 
   // Notify Reminders page that local data changed
   window.dispatchEvent(new CustomEvent('local-data-written'));
