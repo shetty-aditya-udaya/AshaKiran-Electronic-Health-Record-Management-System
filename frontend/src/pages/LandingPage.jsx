@@ -870,8 +870,12 @@ export default function LandingPage() {
  
                 {/* Right Column: Profile details */}
                 <div className="lg:col-span-5 bg-white dark:bg-slate-900 p-8 rounded-2xl border border-slate-200/50 dark:border-slate-800/80 shadow-sm flex flex-col justify-between items-center text-center">
-                  <div className="w-20 h-20 rounded-full bg-teal-50 text-[#0F766E] flex items-center justify-center text-2xl font-bold shadow-inner mb-4">
-                    {t('sujataName', 'Sujata')[0] || 'S'}
+                  <div className="w-20 h-20 rounded-full overflow-hidden shadow-inner mb-4 border-2 border-teal-50">
+                    <img 
+                      src="/sujata.jpg" 
+                      alt={t('sujataName', 'Sujata')} 
+                      className="w-full h-full object-cover" 
+                    />
                   </div>
                   <h4 className="text-lg font-bold text-slate-900 dark:text-white">{t('sujataName', 'Sujata')}</h4>
                   <p className="text-sm text-[#0F766E] font-medium mb-4">{t('sujataRole', 'ASHA Worker, Bengaluru Rural District')}</p>
