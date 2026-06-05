@@ -65,9 +65,9 @@ export default function Programmes() {
       <main className="py-12 px-6 md:px-12 max-w-7xl mx-auto w-full flex-grow">
         {/* Title Section */}
         <section className="mb-12">
-          <h1 className="text-4xl md:text-5xl font-extrabold text-on-surface tracking-tight mb-4 font-headline">{t('healthcareProgrammes', 'Healthcare Programmes')}</h1>
-          <p className="text-on-surface-variant text-lg max-w-2xl leading-relaxed">
-            {t('programmesHeaderDesc', 'Managed by ASHA Workers for community wellness. Track, monitor, and deliver essential care services with precision.')}
+          <h1 className="text-4xl md:text-5xl font-extrabold text-on-surface tracking-tight mb-4 font-headline">{t('communityHealthcareProgrammes', 'Community Healthcare Programmes')}</h1>
+          <p className="text-on-surface-variant text-lg max-w-3xl leading-relaxed">
+            {t('programmesHeaderDescSimple', 'AshaKiran helps ASHA workers manage maternal care, chronic illness monitoring, child healthcare, follow-up visits, and rural health outreach through a unified digital platform.')}
           </p>
         </section>
 
@@ -119,19 +119,31 @@ export default function Programmes() {
             />
           </div>
           <div className="order-1 lg:order-2 px-6">
-            <span className="inline-block px-4 py-1 bg-primary-container text-on-primary-container rounded-full text-xs font-bold uppercase tracking-widest mb-6">{t('digitalFirst', 'Digital First')}</span>
-            <h2 className="text-4xl font-bold mb-6 leading-tight font-headline">{t('optimizeCareTitle', 'Optimizing Care for Every Household')}</h2>
+            <span className="inline-block px-4 py-1 bg-teal-50 text-teal-800 border border-teal-100 rounded-full text-xs font-bold uppercase tracking-widest mb-6">
+              {t('programmeOutreach', 'Outreach & Delivery')}
+            </span>
+            <h2 className="text-4xl font-bold mb-6 leading-tight font-headline">
+              {t('nurturingRuralCareTitle', 'Structured Outreach & Monitoring')}
+            </h2>
             <p className="text-on-surface-variant text-lg leading-relaxed mb-8">
-              {t('optimizeCareDesc', 'Our platform empowers ASHA workers with real-time data synchronization, ensuring that no patient falls through the cracks. From maternal milestones to chronic disease management, we bring clinical precision to community care.')}
+              {t('nurturingRuralCareDesc', 'ASHA workers serve as the primary link between communities and public health systems. AshaKiran provides clinical record structures to standardize data collection, follow-ups, and risk tracking without administrative overhead.')}
             </p>
-            <div className="flex gap-4">
-              <div className="p-4 bg-surface-container-low rounded-lg">
-                <div className="text-2xl font-bold text-primary font-headline">10k+</div>
-                <div className="text-sm text-on-surface-variant">{t('familiesTracked', 'Families Tracked')}</div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="p-4 bg-surface-container-low rounded-lg border border-slate-100 flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary text-xl">pregnant_woman</span>
+                <span className="text-sm font-semibold text-slate-800">{t('highlightMaternal', 'Maternal Care')}</span>
               </div>
-              <div className="p-4 bg-surface-container-low rounded-lg">
-                <div className="text-2xl font-bold text-primary font-headline">99.8%</div>
-                <div className="text-sm text-on-surface-variant">{t('vaccineCompliance', 'Vaccine Compliance')}</div>
+              <div className="p-4 bg-surface-container-low rounded-lg border border-slate-100 flex items-center gap-2">
+                <span className="material-symbols-outlined text-secondary text-xl">child_care</span>
+                <span className="text-sm font-semibold text-slate-800">{t('highlightChild', 'Child Health')}</span>
+              </div>
+              <div className="p-4 bg-surface-container-low rounded-lg border border-slate-100 flex items-center gap-2">
+                <span className="material-symbols-outlined text-tertiary text-xl">favorite</span>
+                <span className="text-sm font-semibold text-slate-800">{t('highlightChronic', 'Chronic Care')}</span>
+              </div>
+              <div className="p-4 bg-surface-container-low rounded-lg border border-slate-100 flex items-center gap-2">
+                <span className="material-symbols-outlined text-amber-600 text-xl">event_repeat</span>
+                <span className="text-sm font-semibold text-slate-800">{t('highlightFollowUp', 'Follow-up Tracking')}</span>
               </div>
             </div>
           </div>
