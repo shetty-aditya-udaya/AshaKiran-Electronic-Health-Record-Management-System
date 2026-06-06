@@ -56,12 +56,20 @@ let _autoSyncAttached  = false;   // guard against double-attaching events
 let _wasOnline         = undefined;
 let _failStreak        = 0;       // consecutive /health failures
 
+// Event listener handlers for proper cleanup on reset
+let _onlineHandler         = null;
+let _serverOnlineHandler   = null;
+let _visibilityHandler     = null;
+let _visitAddedHandler     = null;
+let _patientAddedHandler   = null;
+
 // ── Logging helpers ───────────────────────────────────────────────────────────
+const isDev = import.meta.env.DEV;
 const log = {
-  info:  (...a) => console.log('%c[Sync]',  'color:#0ea5e9;font-weight:bold', ...a),
-  warn:  (...a) => console.warn('%c[Sync]', 'color:#f59e0b;font-weight:bold', ...a),
+  info:  (...a) => { if (isDev) console.log('%c[Sync]',  'color:#0ea5e9;font-weight:bold', ...a); },
+  warn:  (...a) => { if (isDev) console.warn('%c[Sync]', 'color:#f59e0b;font-weight:bold', ...a); },
   error: (...a) => console.error('%c[Sync]','color:#ef4444;font-weight:bold', ...a),
-  debug: (...a) => console.debug('%c[Sync]','color:#94a3b8;font-weight:bold', ...a),
+  debug: (...a) => { if (isDev) console.debug('%c[Sync]','color:#94a3b8;font-weight:bold', ...a); },
 };
 
 // ── Status emitter ────────────────────────────────────────────────────────────
@@ -201,19 +209,21 @@ async function _executeSyncInternal() {
     const failed    = await _countFailed();
 
     // ── Post-sync diagnostic dump ─────────────────────────────────────────────
-    const diag = await getFullDiagnostics();
-    console.group('%c[Sync] Post-sync queue state', 'color:#0ea5e9;font-weight:bold');
-    console.log('QUEUE AFTER CLEANUP:');
-    console.log('  remaining pending:', remaining, '  failed:', failed);
-    Object.entries(diag.counts).forEach(([table, { total, byStatus }]) => {
-      console.log(`  ${table}: total=${total}`, byStatus);
-    });
-    if (diag.pendingItems.length > 0) {
-      console.warn('PENDING ITEMS (still in queue):', diag.pendingItems);
-    } else {
-      console.log('%c  ✅ Queue is empty — all items synced', 'color:#22c55e');
+    if (isDev) {
+      const diag = await getFullDiagnostics();
+      console.group('%c[Sync] Post-sync queue state', 'color:#0ea5e9;font-weight:bold');
+      console.log('QUEUE AFTER CLEANUP:');
+      console.log('  remaining pending:', remaining, '  failed:', failed);
+      Object.entries(diag.counts).forEach(([table, { total, byStatus }]) => {
+        console.log(`  ${table}: total=${total}`, byStatus);
+      });
+      if (diag.pendingItems.length > 0) {
+        console.warn('PENDING ITEMS (still in queue):', diag.pendingItems);
+      } else {
+        console.log('%c  ✅ Queue is empty — all items synced', 'color:#22c55e');
+      }
+      console.groupEnd();
     }
-    console.groupEnd();
 
     // [Bug 3] Correct post-sync emission logic:
     //   remaining > 0  → items still queued (will retry next heartbeat) → 'pending'
@@ -914,34 +924,41 @@ export function initAutoSync() {
   };
   scheduleNextHeartbeat();
 
-  // Sync on browser network restore (belt & suspenders alongside heartbeat)
-  window.addEventListener('online', () => {
+  _onlineHandler = () => {
     log.info('browser online event → triggering immediate sync');
     _failStreak = 0;
-    // Mark as online now so the next heartbeat doesn't ALSO trigger syncAll
-    // (which would start two redundant parallel sync passes on every reconnect).
     _wasOnline = true;
     syncAll();
-  });
+  };
 
-  // Sync on ConnectionContext server online detection
-  window.addEventListener('server-online', () => {
+  _serverOnlineHandler = () => {
     log.info('server-online custom event → triggering immediate sync');
     _failStreak = 0;
     _wasOnline = true;
     syncAll();
-  });
+  };
 
-  // Sync on tab focus (only if lock is free — no duplicate runs)
-  document.addEventListener('visibilitychange', () => {
+  _visibilityHandler = () => {
     if (document.visibilityState === 'visible' && !_syncLock) {
       syncAll();
     }
-  });
+  };
+
+  _visitAddedHandler = () => { if (!_syncLock) syncAll(); };
+  _patientAddedHandler = () => { if (!_syncLock) syncAll(); };
+
+  // Sync on browser network restore (belt & suspenders alongside heartbeat)
+  window.addEventListener('online', _onlineHandler);
+
+  // Sync on ConnectionContext server online detection
+  window.addEventListener('server-online', _serverOnlineHandler);
+
+  // Sync on tab focus (only if lock is free — no duplicate runs)
+  document.addEventListener('visibilitychange', _visibilityHandler);
 
   // Sync immediately after local writes
-  window.addEventListener('visit-added',   () => { if (!_syncLock) syncAll(); });
-  window.addEventListener('patient-added', () => { if (!_syncLock) syncAll(); });
+  window.addEventListener('visit-added',   _visitAddedHandler);
+  window.addEventListener('patient-added', _patientAddedHandler);
 
   // Initial sync on load
   syncAll();
@@ -953,11 +970,31 @@ export function resetSyncEngine() {
   _wasOnline = undefined;
   _failStreak = 0;
   if (_heartbeatTimer) {
-    // Works for both clearInterval (old) and clearTimeout (new recursive approach)
     clearTimeout(_heartbeatTimer);
-    clearInterval(_heartbeatTimer);
     _heartbeatTimer = null;
   }
+  
+  if (_onlineHandler) {
+    window.removeEventListener('online', _onlineHandler);
+    _onlineHandler = null;
+  }
+  if (_serverOnlineHandler) {
+    window.removeEventListener('server-online', _serverOnlineHandler);
+    _serverOnlineHandler = null;
+  }
+  if (_visibilityHandler) {
+    document.removeEventListener('visibilitychange', _visibilityHandler);
+    _visibilityHandler = null;
+  }
+  if (_visitAddedHandler) {
+    window.removeEventListener('visit-added', _visitAddedHandler);
+    _visitAddedHandler = null;
+  }
+  if (_patientAddedHandler) {
+    window.removeEventListener('patient-added', _patientAddedHandler);
+    _patientAddedHandler = null;
+  }
+
   _autoSyncAttached = false;
   _emit('idle', 0);
   log.info('Sync engine reset (logout)');

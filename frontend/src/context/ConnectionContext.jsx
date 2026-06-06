@@ -27,64 +27,124 @@ export function ConnectionProvider({ children }) {
   const pollRef    = useRef(null);
   const lastStatus = useRef('checking');
   const statusRef  = useRef('checking'); // mirrors state without triggering re-render
+  const isCheckingRef = useRef(false);
+  const abortControllerRef = useRef(null);
 
-  const check = useCallback(async () => {
+  const check = useCallback(async (isInitialOrRetry = false) => {
+    if (isCheckingRef.current) {
+      return; // Prevent duplicate concurrent checks
+    }
+    isCheckingRef.current = true;
+
+    // Abort any previous pending request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     if (!navigator.onLine) {
       failStreak.current = Math.max(failStreak.current + 1, FAIL_THRESHOLD);
       if (lastStatus.current !== 'offline') {
         lastStatus.current = 'offline';
+        statusRef.current  = 'offline';
         setServerStatus('offline');
         window.dispatchEvent(new CustomEvent('server-offline'));
       }
+      isCheckingRef.current = false;
       return;
     }
 
-    const ok = await checkHealth();
-
-    if (ok) {
-      failStreak.current = 0;
-
-      if (lastStatus.current !== 'online') {
-        lastStatus.current = 'online';
-        statusRef.current  = 'online';
-        setServerStatus('online');
-        // Notify sync engine that server came back
-        window.dispatchEvent(new CustomEvent('server-online'));
+    // Failsafe auto-dismiss timer: if health check hangs > 3s, force offline
+    const failsafeTimer = setTimeout(() => {
+      if (lastStatus.current === 'checking' || statusRef.current === 'checking') {
+        if (import.meta.env.DEV) {
+          console.warn('[ConnectionContext] Failsafe timeout triggered: server check took too long.');
+        }
+        controller.abort();
+        if (lastStatus.current !== 'offline') {
+          lastStatus.current = 'offline';
+          statusRef.current  = 'offline';
+          setServerStatus('offline');
+          window.dispatchEvent(new CustomEvent('server-offline'));
+        }
       }
-    } else {
-      failStreak.current += 1;
+    }, 3000);
 
-      if (failStreak.current >= FAIL_THRESHOLD && lastStatus.current !== 'offline') {
+    try {
+      // 3s timeout, 1 attempt, pass AbortController signal
+      const ok = await checkHealth(3000, 1, controller.signal);
+
+      clearTimeout(failsafeTimer);
+
+      if (ok) {
+        failStreak.current = 0;
+        if (lastStatus.current !== 'online') {
+          lastStatus.current = 'online';
+          statusRef.current  = 'online';
+          setServerStatus('online');
+          window.dispatchEvent(new CustomEvent('server-online'));
+        }
+      } else {
+        failStreak.current += 1;
+        // On startup (checking) or retry, transition to offline immediately
+        const isChecking = lastStatus.current === 'checking' || isInitialOrRetry;
+        if ((isChecking || failStreak.current >= FAIL_THRESHOLD) && lastStatus.current !== 'offline') {
+          lastStatus.current = 'offline';
+          statusRef.current  = 'offline';
+          setServerStatus('offline');
+          window.dispatchEvent(new CustomEvent('server-offline'));
+        }
+      }
+    } catch (err) {
+      clearTimeout(failsafeTimer);
+      failStreak.current += 1;
+      
+      const isChecking = lastStatus.current === 'checking' || isInitialOrRetry;
+      if ((isChecking || failStreak.current >= FAIL_THRESHOLD) && lastStatus.current !== 'offline') {
         lastStatus.current = 'offline';
         statusRef.current  = 'offline';
         setServerStatus('offline');
-        // Notify sync engine
         window.dispatchEvent(new CustomEvent('server-offline'));
       }
+    } finally {
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+      }
+      isCheckingRef.current = false;
     }
   }, []);
 
   const retryNow = useCallback(async () => {
     setServerStatus('checking');
-    await check();
+    lastStatus.current = 'checking';
+    statusRef.current  = 'checking';
+    await check(true);
   }, [check]);
 
   useEffect(() => {
-    check();
-    
-    // Fixed polling interval — adaptive logic handled inside check() via the ref.
-    // Do NOT put serverStatus in deps: it would tear down and recreate the interval
-    // on every status change, causing rapid-fire health checks and banner flicker.
-    pollRef.current = setInterval(check, POLL_INTERVAL_MS);
+    // Initial check
+    check(true);
+
+    pollRef.current = setInterval(() => check(), POLL_INTERVAL_MS);
 
     const onVisible = () => { if (document.visibilityState === 'visible') check(); };
     document.addEventListener('visibilitychange', onVisible);
-    window.addEventListener('online', retryNow);
-    window.addEventListener('offline', retryNow);
+
+    let networkTimer = null;
+    const handleNetworkChange = () => {
+      if (networkTimer) clearTimeout(networkTimer);
+      networkTimer = setTimeout(() => {
+        retryNow();
+      }, 500); // Debounce network transitions
+    };
+
+    window.addEventListener('online', handleNetworkChange);
+    window.addEventListener('offline', handleNetworkChange);
 
     const handleApiSuccess = () => {
       failStreak.current = 0;
-      if (lastStatus.current !== 'online') {
+      if (lastStatus.current === 'offline' || lastStatus.current === 'checking') {
         lastStatus.current = 'online';
         statusRef.current  = 'online';
         setServerStatus('online');
@@ -108,12 +168,16 @@ export function ConnectionProvider({ children }) {
     return () => {
       clearInterval(pollRef.current);
       document.removeEventListener('visibilitychange', onVisible);
-      window.removeEventListener('online', retryNow);
-      window.removeEventListener('offline', retryNow);
+      window.removeEventListener('online', handleNetworkChange);
+      window.removeEventListener('offline', handleNetworkChange);
       window.removeEventListener('api-call-success', handleApiSuccess);
       window.removeEventListener('api-call-failure', handleApiFailure);
+      if (networkTimer) clearTimeout(networkTimer);
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
     };
-  }, [check, retryNow]); // ← serverStatus intentionally omitted — see comment above
+  }, [check, retryNow]);
 
   const isServerReachable = serverStatus === 'online';
 

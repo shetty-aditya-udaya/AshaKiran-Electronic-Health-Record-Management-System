@@ -226,23 +226,38 @@ export const api = {
 // ── Health check ──────────────────────────────────────────────────────────────
 // Uses a relative path so it goes through Vite proxy → Flask.
 // Returns true ONLY on a proper 2xx response; 503 degraded = false.
-export async function checkHealth() {
-  const attempts = 2;
+export async function checkHealth(timeoutMs = 3000, attempts = 1, externalSignal = null) {
   for (let i = 0; i < attempts; i++) {
     try {
+      if (externalSignal && externalSignal.aborted) {
+        return false;
+      }
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 6_000); // 6s per attempt
+      let abortHandler;
+      if (externalSignal) {
+        abortHandler = () => controller.abort();
+        externalSignal.addEventListener('abort', abortHandler);
+      }
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
       const res = await fetch(`${API_BASE_URL}/health`, {
         signal: controller.signal,
         cache: 'no-store',
       });
       clearTimeout(timer);
+      if (externalSignal && abortHandler) {
+        externalSignal.removeEventListener('abort', abortHandler);
+      }
       if (res.ok) return true;
     } catch (err) {
-      console.warn(`[checkHealth] attempt ${i + 1} failed:`, err.message);
+      if (import.meta.env.DEV && err.name !== 'AbortError') {
+        console.warn(`[checkHealth] attempt ${i + 1} failed:`, err.message);
+      }
     }
     if (i < attempts - 1) {
-      await new Promise(r => setTimeout(r, 1000)); // sleep 1s before retry
+      if (externalSignal && externalSignal.aborted) {
+        return false;
+      }
+      await new Promise(r => setTimeout(r, 500)); // sleep 500ms before retry
     }
   }
   return false;
