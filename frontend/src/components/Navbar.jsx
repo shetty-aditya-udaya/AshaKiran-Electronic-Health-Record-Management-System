@@ -28,14 +28,14 @@ function initials(name) {
 }
 
 /** Humanises the raw role value from the DB */
-function humanRole(role) {
+function humanRole(role, t) {
   if (!role || role === 'asha') return null;           // treat bare 'asha' as unset
   const map = {
-    'asha_worker': 'ASHA Worker',
-    'nurse':       'Nurse',
-    'doctor':      'Doctor',
-    'supervisor':  'Supervisor',
-    'admin':       'Admin',
+    'asha_worker': t('role.asha_worker', 'ASHA Worker'),
+    'nurse':       t('role.nurse', 'Nurse'),
+    'doctor':      t('role.doctor', 'Doctor'),
+    'supervisor':  t('role.supervisor', 'Supervisor'),
+    'admin':       t('role.admin', 'Admin'),
   };
   return map[role.toLowerCase()] || role;
 }
@@ -62,8 +62,8 @@ export default function Navbar({ user, handleLogout, avatar }) {
   }, []);
 
   const { pct, label, ringColor, textColor } = useProfileCompletion();
-  const roleLabel  = humanRole(user?.role);
-  const displayName = user?.name || 'ASHA Worker';
+  const roleLabel  = humanRole(user?.role, t);
+  const displayName = user?.name || t('role.asha_worker', 'ASHA Worker');
 
   // Close profile dropdown on outside click
   useEffect(() => {
