@@ -219,6 +219,61 @@ async function request(method, path, { body, headers: extra = {}, raw = false } 
       return text;
     }
   } catch (err) {
+    // 1. Temporary production debugging / telemetry logs
+    console.error(`[API Debug] Request failed: ${method} ${path}`, {
+      attemptedUrl: url,
+      navigatorOnline: navigator.onLine,
+      errorName: err.name,
+      errorMessage: err.message,
+      errorStatus: err.status,
+      swState: navigator.serviceWorker ? (navigator.serviceWorker.controller ? 'controlled' : 'active-no-controller') : 'unsupported',
+      networkMode: import.meta.env.MODE,
+    });
+
+    // 2. Recovery Handling: If fetch failed and it was a direct absolute URL cross-origin request
+    const isAbsolute = url.startsWith('http://') || url.startsWith('https://');
+    const isLocalhost = url.includes('localhost') || url.includes('127.0.0.1');
+    const isSameOrigin = url.startsWith(window.location.origin);
+
+    if ((err instanceof BackendUnreachableError || err instanceof TimeoutError) && isAbsolute && !isSameOrigin && !isLocalhost) {
+      console.warn(`[API Recovery] Absolute URL call failed. Performing diagnostics & retrying relative same-origin fallback...`);
+
+      // Recovery Action A: Refresh Service Worker
+      if (navigator.serviceWorker) {
+        navigator.serviceWorker.getRegistrations().then(registrations => {
+          for (let registration of registrations) {
+            registration.update().catch(() => {});
+          }
+        }).catch(() => {});
+      }
+
+      // Recovery Action B: Invalidate caches
+      if (typeof caches !== 'undefined') {
+        caches.keys().then(keys => {
+          for (let key of keys) {
+            caches.delete(key).catch(() => {});
+          }
+        }).catch(() => {});
+      }
+
+      // Recovery Action C: Dispatch call failure to alert pings
+      window.dispatchEvent(new CustomEvent('api-call-failure'));
+
+      // Recovery Action D: Retry using the relative path fallback
+      try {
+        console.log(`[API Recovery] Retrying relative path: ${path}`);
+        const res = await fetchWithRetry(path, options);
+        window.dispatchEvent(new CustomEvent('api-call-success'));
+        if (raw) return res;
+        const text = await res.text();
+        if (!text) return null;
+        try { return JSON.parse(text); } catch { return text; }
+      } catch (retryErr) {
+        console.error('[API Recovery] Relative path retry also failed:', retryErr);
+        throw retryErr;
+      }
+    }
+
     if (err instanceof OfflineError || err instanceof TimeoutError || err instanceof BackendUnreachableError) {
       window.dispatchEvent(new CustomEvent('api-call-failure'));
     }
@@ -230,7 +285,8 @@ async function request(method, path, { body, headers: extra = {}, raw = false } 
         if (refreshed) {
           console.log(`[API] Silent refresh succeeded. Retrying ${path}...`);
           options.headers = buildHeaders(extra, isFormData);
-          const res = await fetchWithRetry(url, options);
+          const retryUrl = path.startsWith('http://') || path.startsWith('https://') ? path : `${API_BASE_URL}${path}`;
+          const res = await fetchWithRetry(retryUrl, options);
           window.dispatchEvent(new CustomEvent('api-call-success'));
           if (raw) return res;
           const text = await res.text();
