@@ -46,11 +46,17 @@ function progressColour(status) {
   }
 }
 
-function patientSubtitle(p) {
-  if (p.category === 'Pregnancy') return p.health_status || 'Antenatal Care';
-  if (p.category === 'Childcare') return p.health_status || 'Child Vaccination';
-  if (p.category === 'Chronic')   return p.health_status || 'Chronic Wellness';
-  return p.health_status || p.category || 'General';
+function patientSubtitle(p, t) {
+  const cat = p.category;
+  const status = p.health_status;
+  let displayStatus = status;
+  if (status) {
+    displayStatus = t(`status.${status.toLowerCase()}`, status);
+  }
+  if (cat === 'Pregnancy') return displayStatus || t('healthStatus.anc', 'Antenatal Care');
+  if (cat === 'Childcare') return displayStatus || t('healthStatus.vaccination', 'Child Vaccination');
+  if (cat === 'Chronic')   return displayStatus || t('healthStatus.chronic', 'Chronic Wellness');
+  return displayStatus || t(`category.${cat?.toLowerCase()}`, cat || 'General');
 }
 
 function subtitleColour(p) {
@@ -123,14 +129,14 @@ export default function Reports() {
       }
       const diff = Date.now() - Number(ts);
       if (diff < 60_000) {
-        setLastSyncText('Last synced just now');
+        setLastSyncText(t('reports.lastSyncedJustNow'));
       } else {
         const mins = Math.floor(diff / 60_000);
         if (mins < 60) {
-          setLastSyncText(`Last synced ${mins} min${mins > 1 ? 's' : ''} ago`);
+          setLastSyncText(t('reports.lastSyncedMinutesAgo', { count: mins }));
         } else {
           const hours = Math.floor(mins / 60);
-          setLastSyncText(`Last synced ${hours} hour${hours > 1 ? 's' : ''} ago`);
+          setLastSyncText(hours > 1 ? t('reminders.lastSyncedHoursAgoPlural', { count: hours }) : t('reminders.lastSyncedHoursAgo', { count: hours }));
         }
       }
     };
@@ -165,7 +171,7 @@ export default function Reports() {
 
   // ── export ──────────────────────────────────────────────────────────────────
   const handleExport = async () => {
-    const toastId = toast.loading('Generating healthcare workbook…');
+    const toastId = toast.loading(t('reports.generatingWorkbook'));
     try {
       // 1. Fetch full data from Dexie
       const patients = await db.patients.toArray();
@@ -301,10 +307,10 @@ export default function Reports() {
       XLSX.utils.book_append_sheet(wb, wsSync, 'Sync Status');
 
       XLSX.writeFile(wb, 'AshaKiran_Healthcare_Workbook.xlsx');
-      toast.success('Excel workbook exported successfully!', { id: toastId });
+      toast.success(t('reports.workbookExported'), { id: toastId });
     } catch (err) {
       console.error('[Export Error]', err);
-      toast.error('Failed to export professional Excel workbook.', { id: toastId });
+      toast.error(t('reports.workbookExportFailed'), { id: toastId });
     }
   };
 
@@ -404,7 +410,7 @@ export default function Reports() {
                   : 'bg-transparent border border-outline-variant/30 text-on-surface-variant hover:bg-surface-container-high'
               }`}
             >
-              {t(cat.toLowerCase(), cat)}
+              {cat === 'All' ? t('reminders.statusAll') : t(`category.${cat.toLowerCase()}`, cat)}
             </button>
           ))}
           <div className="flex flex-col items-end gap-1 ml-2">
@@ -413,24 +419,33 @@ export default function Reports() {
               disabled={manualSyncing}
               onClick={async () => {
                 setManualSyncing(true);
-                const toastId = toast.loading('Syncing records...');
+                const toastId = toast.loading(t('reports.syncingRecordsLoading'));
                 try {
                   const result = await manualSyncReports();
+                  let msg = result.message;
                   if (result.status === 'success') {
-                    toast.success(result.message, { id: toastId });
+                    msg = t('reports.syncSuccess', 'Healthcare records synced successfully');
+                    toast.success(msg, { id: toastId });
                     await fetchFromServer();
                   } else if (result.status === 'partial') {
-                    toast.error(result.message, { id: toastId });
+                    msg = t('reminders.syncPartial', 'Some records synced, some failed. Please try again.');
+                    toast.error(msg, { id: toastId });
                     await fetchFromServer();
                   } else if (result.status === 'nothing-to-sync') {
-                    toast.success(result.message, { id: toastId });
+                    msg = t('reminders.syncNothing', 'All records already synced');
+                    toast.success(msg, { id: toastId });
                   } else if (result.status === 'offline') {
-                    toast.error(result.message, { id: toastId });
+                    msg = t('reminders.syncOffline', 'You are offline. Connect to the internet to sync pending data.');
+                    toast.error(msg, { id: toastId });
+                  } else if (result.status === 'locked') {
+                    msg = t('reminders.syncLocked', 'Sync already in progress.');
+                    toast.error(msg, { id: toastId });
                   } else {
-                    toast.error(result.message || 'Sync failed', { id: toastId });
+                    msg = t('reports.syncFailed', 'Failed to sync healthcare records');
+                    toast.error(msg, { id: toastId });
                   }
                 } catch (err) {
-                  toast.error(`Sync failed: ${err.message}`, { id: toastId });
+                  toast.error(`${t('reports.syncFailed', 'Failed to sync healthcare records')}: ${err.message}`, { id: toastId });
                 } finally {
                   setManualSyncing(false);
                 }
@@ -438,7 +453,7 @@ export default function Reports() {
               className="flex items-center gap-2 bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200/50 px-5 py-2.5 rounded-xl font-body font-semibold transition-all disabled:opacity-60 disabled:cursor-not-allowed active:scale-95"
             >
               <span className={`material-symbols-outlined text-[20px] ${manualSyncing ? 'animate-spin' : ''}`}>sync</span>
-              <span>{manualSyncing ? 'Syncing Records...' : 'Sync Records'}</span>
+              <span>{manualSyncing ? t('reports.syncingRecords') : t('reports.syncRecords')}</span>
             </button>
             {lastSyncText && (
               <span className="text-[10px] text-slate-400 font-medium">{lastSyncText}</span>
@@ -508,7 +523,7 @@ export default function Reports() {
               visible: Math.min(visibleCount, filtered.length),
               total: filtered.length,
             })}
-            {activeCategory !== 'All' || searchTerm ? ` (filtered from ${folders.length} total)` : ''}
+            {activeCategory !== 'All' || searchTerm ? ` ${t('reports.filteredFromTotal', { count: folders.length })}` : ''}
           </p>
         </div>
       )}
@@ -520,7 +535,7 @@ export default function Reports() {
 
 function ReportFolderCard({ folder: p, idx, onClick }) {
   const { t } = useTranslation();
-  const subtitle    = patientSubtitle(p);
+  const subtitle    = patientSubtitle(p, t);
   const subtitleCls = subtitleColour(p);
   const badgeCls    = statusBadge(p.status);
   const progressW   = progressWidth(p.status);

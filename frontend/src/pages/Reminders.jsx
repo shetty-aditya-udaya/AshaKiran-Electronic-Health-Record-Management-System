@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import { useTranslation } from 'react-i18next';
 import { useReminders } from '../hooks/useReminders';
 import { useDeleteVisit } from '../hooks/useDeleteVisit';
 import DeleteVisitModal from '../components/DeleteVisitModal';
@@ -19,7 +20,7 @@ function typeIcon(type) {
   return 'stethoscope';
 }
 
-function PendingCard({ r, navigate, onDeleteRequest }) {
+function PendingCard({ r, navigate, t, onDeleteRequest }) {
   const getDaysDifferenceLabel = (visitDateStr) => {
     if (!visitDateStr) return '';
     const today = new Date();
@@ -32,15 +33,15 @@ function PendingCard({ r, navigate, onDeleteRequest }) {
 
     if (diffDays < 0) {
       const abs = Math.abs(diffDays);
-      return `${abs} day${abs > 1 ? 's' : ''} overdue`;
+      return abs > 1 ? t('reminders.daysOverduePlural', { count: abs }) : t('reminders.daysOverdue', { count: abs });
     } else if (diffDays === 0) {
-      return 'today';
+      return t('reminders.today');
     } else {
-      return `in ${diffDays} day${diffDays > 1 ? 's' : ''}`;
+      return diffDays > 1 ? t('reminders.inDaysPlural', { count: diffDays }) : t('reminders.inDays', { count: diffDays });
     }
   };
 
-  const statusLabel = r.computedStatus === 'overdue' ? 'OVERDUE' : r.computedStatus === 'today' ? 'TODAY' : 'UPCOMING';
+  const statusLabel = r.computedStatus === 'overdue' ? t('reminders.badgeOverdue') : r.computedStatus === 'today' ? t('reminders.badgeToday') : t('reminders.badgeUpcoming');
   
   const style = {
     overdue: {
@@ -104,7 +105,7 @@ function PendingCard({ r, navigate, onDeleteRequest }) {
           </span>
 
           <span className={`px-2.5 py-0.5 text-[10px] font-medium rounded-full border ${categoryClass}`}>
-            {r.patientCategory}
+            {t(`category.${r.patientCategory.toLowerCase()}`, r.patientCategory)}
           </span>
         </div>
 
@@ -112,7 +113,7 @@ function PendingCard({ r, navigate, onDeleteRequest }) {
         <div className="flex flex-wrap items-center gap-y-2 gap-x-4 text-slate-500 text-sm font-body">
           <span className="flex items-center gap-1.5">
             <span className="material-symbols-outlined text-base text-primary">{typeIcon(r.visit_type)}</span>
-            {r.visit_type || 'General'}
+            {t(`visitType.${(r.visit_type || 'General').toLowerCase()}`, r.visit_type || 'General')}
           </span>
           <span className="flex items-center gap-1.5">
             <span className="material-symbols-outlined text-base">location_on</span>
@@ -125,7 +126,7 @@ function PendingCard({ r, navigate, onDeleteRequest }) {
           {r.syncStatus === SYNC.PENDING && (
             <span className="flex items-center gap-1.5 text-amber-600 font-bold bg-amber-50 px-2 py-0.5 rounded-lg text-xs">
               <span className="material-symbols-outlined text-base animate-pulse">cloud_queue</span>
-              Offline Pending
+              {t('reminders.offlinePending')}
             </span>
           )}
         </div>
@@ -133,7 +134,7 @@ function PendingCard({ r, navigate, onDeleteRequest }) {
         {/* Row 3: Remarks/Notes */}
         {r.notes && (
           <p className="text-xs text-slate-500 bg-slate-50 border border-slate-100 p-2.5 rounded-xl max-w-2xl truncate">
-            <strong className="text-slate-600 mr-1">Notes:</strong> {r.notes}
+            <strong className="text-slate-600 mr-1">{t('reminders.notesLabel')}</strong> {r.notes}
           </p>
         )}
       </div>
@@ -145,7 +146,7 @@ function PendingCard({ r, navigate, onDeleteRequest }) {
           className={`flex-grow md:flex-none px-6 py-2.5 rounded-xl font-bold text-sm transition-all active:scale-95 flex items-center justify-center gap-2 ${style.btn}`}
         >
           <span className="material-symbols-outlined text-lg">edit_document</span>
-          Start Visit
+          {t('reminders.startVisit')}
         </button>
         {onDeleteRequest && (
           <button
@@ -162,7 +163,7 @@ function PendingCard({ r, navigate, onDeleteRequest }) {
   );
 }
 
-function CompletedCard({ r, navigate, onDeleteRequest }) {
+function CompletedCard({ r, navigate, t, onDeleteRequest }) {
   const categoryClass = {
     pregnancy: 'chip-pregnancy',
     chronic: 'chip-chronic',
@@ -191,11 +192,11 @@ function CompletedCard({ r, navigate, onDeleteRequest }) {
           <h3 className="text-xl font-bold text-slate-700 leading-none">{r.patientName}</h3>
           
           <span className="px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-full border bg-slate-100 text-slate-600 border-slate-200">
-            COMPLETED
+            {t('reminders.badgeCompleted')}
           </span>
 
           <span className={`px-2.5 py-0.5 text-[10px] font-medium rounded-full border ${categoryClass}`}>
-            {r.patientCategory}
+            {t(`category.${r.patientCategory.toLowerCase()}`, r.patientCategory)}
           </span>
         </div>
 
@@ -203,7 +204,7 @@ function CompletedCard({ r, navigate, onDeleteRequest }) {
         <div className="flex flex-wrap items-center gap-y-2 gap-x-4 text-slate-500 text-sm font-body">
           <span className="flex items-center gap-1.5">
             <span className="material-symbols-outlined text-base text-primary">{typeIcon(r.visit_type)}</span>
-            {r.visit_type || 'General'}
+            {t(`visitType.${(r.visit_type || 'General').toLowerCase()}`, r.visit_type || 'General')}
           </span>
           <span className="flex items-center gap-1.5">
             <span className="material-symbols-outlined text-base">location_on</span>
@@ -211,14 +212,14 @@ function CompletedCard({ r, navigate, onDeleteRequest }) {
           </span>
           <span className="flex items-center gap-1.5 font-medium text-slate-700">
             <span className="material-symbols-outlined text-base">check_circle</span>
-            Completed on {formatDisplayDate(r.visit_date)}
+            {t('reminders.completedOn', { date: formatDisplayDate(r.visit_date) })}
           </span>
         </div>
 
         {/* Row 3: Remarks/Notes */}
         {r.notes && (
           <p className="text-xs text-slate-500 bg-slate-50 border border-slate-100 p-2.5 rounded-xl max-w-2xl truncate">
-            <strong className="text-slate-600 mr-1">Remarks:</strong> {r.notes}
+            <strong className="text-slate-600 mr-1">{t('reminders.remarksLabel')}</strong> {r.notes}
           </p>
         )}
       </div>
@@ -230,7 +231,7 @@ function CompletedCard({ r, navigate, onDeleteRequest }) {
           className="flex-grow md:flex-none px-6 py-2.5 rounded-xl font-bold text-sm bg-slate-100 text-slate-700 hover:bg-slate-200 hover:text-slate-800 transition-all active:scale-95 flex items-center justify-center gap-2"
         >
           <span className="material-symbols-outlined text-lg">visibility</span>
-          View Record
+          {t('reminders.viewRecord')}
         </button>
         {onDeleteRequest && (
           <button
@@ -260,7 +261,8 @@ const getStartOfWeek = (d) => {
   return new Date(d.setDate(diff));
 };
 
-export default function Reminders({ t = (k, def) => def }) {
+export default function Reminders() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { reminders, stats, loading, refresh, fetchFromServer } = useReminders();
 
@@ -276,14 +278,14 @@ export default function Reminders({ t = (k, def) => def }) {
       }
       const diff = Date.now() - Number(ts);
       if (diff < 60_000) {
-        setLastSyncText('Last synced just now');
+        setLastSyncText(t('reminders.lastSyncedJustNow'));
       } else {
         const mins = Math.floor(diff / 60_000);
         if (mins < 60) {
-          setLastSyncText(`Last synced ${mins} min${mins > 1 ? 's' : ''} ago`);
+          setLastSyncText(mins > 1 ? t('reminders.lastSyncedMinutesAgoPlural', { count: mins }) : t('reminders.lastSyncedMinutesAgo', { count: mins }));
         } else {
           const hours = Math.floor(mins / 60);
-          setLastSyncText(`Last synced ${hours} hour${hours > 1 ? 's' : ''} ago`);
+          setLastSyncText(hours > 1 ? t('reminders.lastSyncedHoursAgoPlural', { count: hours }) : t('reminders.lastSyncedHoursAgo', { count: hours }));
         }
       }
     };
@@ -387,7 +389,7 @@ export default function Reminders({ t = (k, def) => def }) {
             {t('reminders', 'Reminders')}
           </h1>
           <p className="text-slate-500 text-lg font-light">
-            Dynamic visit scheduling and tracking system
+            {t('reminders.subtitle')}
           </p>
         </div>
 
@@ -398,24 +400,33 @@ export default function Reminders({ t = (k, def) => def }) {
             disabled={manualSyncing}
             onClick={async () => {
               setManualSyncing(true);
-              const toastId = toast.loading('Syncing reminders...');
+              const toastId = toast.loading(t('reminders.syncingReminders'));
               try {
                 const result = await manualSyncReminders();
+                let msg = result.message;
                 if (result.status === 'success') {
-                  toast.success(result.message, { id: toastId });
+                  msg = t('reminders.syncSuccess', 'Reminders synced successfully');
+                  toast.success(msg, { id: toastId });
                   await fetchFromServer();
                 } else if (result.status === 'partial') {
-                  toast.error(result.message, { id: toastId });
+                  msg = t('reminders.syncPartial', 'Some reminders synced, some failed. Please try again.');
+                  toast.error(msg, { id: toastId });
                   await fetchFromServer();
                 } else if (result.status === 'nothing-to-sync') {
-                  toast.success(result.message, { id: toastId });
+                  msg = t('reminders.syncNothing', 'All reminders already synced');
+                  toast.success(msg, { id: toastId });
                 } else if (result.status === 'offline') {
-                  toast.error(result.message, { id: toastId });
+                  msg = t('reminders.syncOffline', 'You are offline. Connect to the internet to sync pending data.');
+                  toast.error(msg, { id: toastId });
+                } else if (result.status === 'locked') {
+                  msg = t('reminders.syncLocked', 'Sync already in progress.');
+                  toast.error(msg, { id: toastId });
                 } else {
-                  toast.error(result.message || 'Sync failed', { id: toastId });
+                  msg = t('reminders.syncFailed', 'Sync failed. Please try again.');
+                  toast.error(msg, { id: toastId });
                 }
               } catch (err) {
-                toast.error(`Sync failed: ${err.message}`, { id: toastId });
+                toast.error(`${t('reminders.syncFailed', 'Sync failed. Please try again.')}: ${err.message}`, { id: toastId });
               } finally {
                 setManualSyncing(false);
               }
@@ -423,7 +434,7 @@ export default function Reminders({ t = (k, def) => def }) {
             className="flex items-center gap-2 bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200/50 px-5 py-2.5 rounded-xl font-body font-semibold transition-all disabled:opacity-60 disabled:cursor-not-allowed active:scale-95"
           >
             <span className={`material-symbols-outlined text-[20px] ${manualSyncing ? 'animate-spin' : ''}`}>sync</span>
-            <span>{manualSyncing ? 'Syncing Reminders...' : 'Sync Reminders'}</span>
+            <span>{manualSyncing ? t('reminders.syncingReminders') : t('reminders.syncReminders')}</span>
           </button>
           {lastSyncText && (
             <span className="text-[10px] text-slate-400 font-medium self-end">{lastSyncText}</span>
@@ -436,7 +447,7 @@ export default function Reminders({ t = (k, def) => def }) {
         {/* Total Card */}
         <div className="glass-card p-5 relative overflow-hidden flex flex-col justify-between min-h-[110px]">
           <div className="flex justify-between items-start">
-            <span className="text-slate-500 text-xs font-bold uppercase tracking-wider">Total</span>
+            <span className="text-slate-500 text-xs font-bold uppercase tracking-wider">{t('reminders.statsTotal')}</span>
             <span className="material-symbols-outlined text-slate-400 text-xl">event_note</span>
           </div>
           <span className="text-3xl font-extrabold text-slate-800 mt-2">{loading ? 'NA' : stats.total}</span>
@@ -445,7 +456,7 @@ export default function Reminders({ t = (k, def) => def }) {
         {/* Overdue Card */}
         <div className="glass-card p-5 border-l-4 border-l-red-500 relative overflow-hidden flex flex-col justify-between min-h-[110px]">
           <div className="flex justify-between items-start">
-            <span className="text-red-500 text-xs font-bold uppercase tracking-wider">Overdue</span>
+            <span className="text-red-500 text-xs font-bold uppercase tracking-wider">{t('reminders.statsOverdue')}</span>
             <span className="material-symbols-outlined text-red-400 text-xl animate-pulse">warning</span>
           </div>
           <span className="text-3xl font-extrabold text-red-600 mt-2">{loading ? 'NA' : stats.overdue}</span>
@@ -454,7 +465,7 @@ export default function Reminders({ t = (k, def) => def }) {
         {/* Today Card */}
         <div className="glass-card p-5 border-l-4 border-l-blue-500 relative overflow-hidden flex flex-col justify-between min-h-[110px]">
           <div className="flex justify-between items-start">
-            <span className="text-blue-500 text-xs font-bold uppercase tracking-wider">Today</span>
+            <span className="text-blue-500 text-xs font-bold uppercase tracking-wider">{t('reminders.statsToday')}</span>
             <span className="material-symbols-outlined text-blue-400 text-xl">today</span>
           </div>
           <span className="text-3xl font-extrabold text-blue-600 mt-2">{loading ? 'NA' : stats.today}</span>
@@ -463,7 +474,7 @@ export default function Reminders({ t = (k, def) => def }) {
         {/* Upcoming Card */}
         <div className="glass-card p-5 border-l-4 border-l-emerald-500 relative overflow-hidden flex flex-col justify-between min-h-[110px]">
           <div className="flex justify-between items-start">
-            <span className="text-emerald-500 text-xs font-bold uppercase tracking-wider">Upcoming</span>
+            <span className="text-emerald-500 text-xs font-bold uppercase tracking-wider">{t('reminders.statsUpcoming')}</span>
             <span className="material-symbols-outlined text-emerald-400 text-xl">event_upcoming</span>
           </div>
           <span className="text-3xl font-extrabold text-emerald-600 mt-2">{loading ? 'NA' : stats.upcoming}</span>
@@ -472,7 +483,7 @@ export default function Reminders({ t = (k, def) => def }) {
         {/* Completed Card */}
         <div className="glass-card p-5 border-l-4 border-l-slate-400 relative overflow-hidden flex flex-col justify-between min-h-[110px]">
           <div className="flex justify-between items-start">
-            <span className="text-slate-500 text-xs font-bold uppercase tracking-wider">Completed</span>
+            <span className="text-slate-500 text-xs font-bold uppercase tracking-wider">{t('reminders.statsCompleted')}</span>
             <span className="material-symbols-outlined text-slate-400 text-xl">task_alt</span>
           </div>
           <span className="text-3xl font-extrabold text-slate-700 mt-2">{loading ? 'NA' : stats.completed}</span>
@@ -492,7 +503,7 @@ export default function Reminders({ t = (k, def) => def }) {
               : 'text-slate-500 hover:text-slate-700'
           }`}
         >
-          Pending ({loading ? '…' : pendingCount})
+          {loading ? t('reminders.tabLoading') : t('reminders.tabPending', { count: pendingCount })}
         </button>
         <button
           onClick={() => {
@@ -504,7 +515,7 @@ export default function Reminders({ t = (k, def) => def }) {
               : 'text-slate-500 hover:text-slate-700'
           }`}
         >
-          Completed ({loading ? '…' : completedCount})
+          {loading ? t('reminders.tabLoading') : t('reminders.tabCompleted', { count: completedCount })}
         </button>
       </div>
 
@@ -518,7 +529,7 @@ export default function Reminders({ t = (k, def) => def }) {
             </span>
             <input
               type="text"
-              placeholder="Search by name, village, type, notes..."
+              placeholder={t('reminders.searchPlaceholder')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full bg-slate-100/50 hover:bg-slate-100 focus:bg-white text-slate-800 pl-12 pr-10 py-3 rounded-2xl border border-slate-200/50 focus:border-primary/50 outline-none transition-all font-body text-sm"
@@ -547,7 +558,12 @@ export default function Reminders({ t = (k, def) => def }) {
                     : 'text-slate-500 hover:text-slate-700'
                 }`}
               >
-                {dOpt === 'this-week' ? 'Week' : dOpt === 'this-month' ? 'Month' : dOpt}
+                {dOpt === 'all' ? t('reminders.dateFilterAll') :
+                 dOpt === 'today' ? t('reminders.dateFilterToday') :
+                 dOpt === 'yesterday' ? t('reminders.dateFilterYesterday') :
+                 dOpt === 'this-week' ? t('reminders.dateFilterWeek') :
+                 dOpt === 'this-month' ? t('reminders.dateFilterMonth') :
+                 t('reminders.dateFilterCustom')}
               </button>
             ))}
           </div>
@@ -556,14 +572,14 @@ export default function Reminders({ t = (k, def) => def }) {
         {/* Custom Date Inputs if custom is selected */}
         {dateFilter === 'custom' && (
           <div className="flex flex-wrap items-center gap-3 bg-slate-50/50 p-3 rounded-2xl border border-slate-200/50 animate-fadeIn">
-            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Date Range:</span>
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">{t('reminders.dateRangeLabel')}</span>
             <input
               type="date"
               value={customStart}
               onChange={(e) => setCustomStart(e.target.value)}
               className="bg-white border border-slate-200 px-3 py-1.5 rounded-xl text-sm outline-none text-slate-700"
             />
-            <span className="text-slate-400 text-sm">to</span>
+            <span className="text-slate-400 text-sm">{t('reminders.dateFilterTo')}</span>
             <input
               type="date"
               value={customEnd}
@@ -578,7 +594,7 @@ export default function Reminders({ t = (k, def) => def }) {
                 }}
                 className="text-xs text-rose-600 font-bold hover:underline ml-auto"
               >
-                Clear Range
+                {t('reminders.clearRange')}
               </button>
             )}
           </div>
@@ -588,7 +604,7 @@ export default function Reminders({ t = (k, def) => def }) {
         <div className="flex flex-col gap-3 pt-3 border-t border-slate-100">
           {/* Category Chips */}
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mr-2">Category:</span>
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mr-2">{t('reminders.categoryLabel')}</span>
             {['all', 'pregnancy', 'chronic', 'childcare', 'general'].map((cat) => (
               <button
                 key={cat}
@@ -599,7 +615,7 @@ export default function Reminders({ t = (k, def) => def }) {
                     : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
                 }`}
               >
-                {cat.charAt(0).toUpperCase() + cat.slice(1)}
+                {cat === 'all' ? t('reminders.statusAll') : t(`category.${cat.toLowerCase()}`, cat.charAt(0).toUpperCase() + cat.slice(1))}
               </button>
             ))}
           </div>
@@ -607,7 +623,7 @@ export default function Reminders({ t = (k, def) => def }) {
           {/* Status Chips (only for pending tab) */}
           {activeTab === 'pending' && (
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mr-2">Status:</span>
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mr-2">{t('reminders.statusLabel')}</span>
               {['all', 'overdue', 'today', 'upcoming'].map((st) => (
                 <button
                   key={st}
@@ -622,7 +638,7 @@ export default function Reminders({ t = (k, def) => def }) {
                       : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
                   }`}
                 >
-                  {st.charAt(0).toUpperCase() + st.slice(1)}
+                  {st === 'all' ? t('reminders.statusAll') : st === 'overdue' ? t('reminders.statusOverdue') : st === 'today' ? t('reminders.statsToday') : t('reminders.statsUpcoming')}
                 </button>
               ))}
             </div>
@@ -657,12 +673,12 @@ export default function Reminders({ t = (k, def) => def }) {
                 )}
               </div>
               <h3 className="text-2xl font-bold text-slate-700 mb-2">
-                {activeTab === 'pending' ? 'No Pending Visits' : 'No Completed Visits'}
+                {activeTab === 'pending' ? t('reminders.noPendingVisits') : t('reminders.noCompletedVisits')}
               </h3>
               <p className="text-slate-400 max-w-md mx-auto text-sm mb-6">
                 {activeTab === 'pending' 
-                  ? 'All caught up! No scheduled visits match your current filters.' 
-                  : 'Complete scheduled visits and they will show up in this history tab.'}
+                  ? t('reminders.allCaughtUp') 
+                  : t('reminders.noCompletedVisitsDesc')}
               </p>
               {activeTab === 'pending' && (
                 <button
@@ -670,7 +686,7 @@ export default function Reminders({ t = (k, def) => def }) {
                   className="btn-primary"
                 >
                   <span className="material-symbols-outlined text-lg">add_circle</span>
-                  Schedule a Visit
+                  {t('reminders.scheduleAVisit')}
                 </button>
               )}
             </div>
@@ -678,10 +694,10 @@ export default function Reminders({ t = (k, def) => def }) {
             <div className="space-y-6">
               {activeTab === 'pending'
                 ? filteredReminders.map((r) => (
-                    <PendingCard key={r.local_id || r.id} r={r} navigate={navigate} onDeleteRequest={requestDelete} />
+                    <PendingCard key={r.local_id || r.id} r={r} navigate={navigate} t={t} onDeleteRequest={requestDelete} />
                   ))
                 : filteredReminders.map((r) => (
-                    <CompletedCard key={r.local_id || r.id} r={r} navigate={navigate} onDeleteRequest={requestDelete} />
+                    <CompletedCard key={r.local_id || r.id} r={r} navigate={navigate} t={t} onDeleteRequest={requestDelete} />
                   ))}
             </div>
           )}

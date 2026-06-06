@@ -9,6 +9,7 @@ import { ArrowLeft, Loader2, Save, Camera, Upload, X, Plus, Trash2, CheckCircle2
 import { db, SYNC, savePrescriptionImage, markPrescriptionImageSynced, getVisitByIdOrLocalId, getReminderByIdOrLocalId, getPatientByIdOrLocalId } from '../lib/db';
 import { createFollowUpLocally } from '../lib/reminderEngine';
 import { useConnection } from '../context/ConnectionContext';
+import { useTranslation } from 'react-i18next';
 import { api } from '../utils/apiClient';
 
 // ── constants ────────────────────────────────────────────────────────────────
@@ -81,7 +82,8 @@ function compressAndConvertToDataUrl(file, maxWidth = 1200, maxHeight = 1200, qu
 
 // ── component ────────────────────────────────────────────────────────────────
 
-export default function CompleteVisit({ t }) {
+export default function CompleteVisit({ t: propT }) {
+  const { t }      = useTranslation();
   const { id }     = useParams();
   const navigate   = useNavigate();
   const cameraRef  = useRef(null);
@@ -296,7 +298,7 @@ export default function CompleteVisit({ t }) {
       setImages(p => [...p, { local_id: idbRecord.local_id, dataUrl, url: null }]);
     } catch (err) {
       console.error('[CompleteVisit] image compression failed:', err);
-      toast.error('Could not process image');
+      toast.error(t('completeVisit.imageErrorToast', 'Could not process image'));
     }
   };
 
@@ -505,8 +507,8 @@ export default function CompleteVisit({ t }) {
 
       toast.success(
         <div className="flex flex-col text-left">
-          <span className="font-semibold text-slate-800">✅ Visit completed</span>
-          <span className="text-xs text-slate-500 mt-0.5">🟡 Syncing in background…</span>
+          <span className="font-semibold text-slate-800">✅ {t('completeVisit.visitCompletedToast', 'Visit completed')}</span>
+          <span className="text-xs text-slate-500 mt-0.5">🟡 {t('completeVisit.syncingBackgroundToast', 'Syncing in background…')}</span>
         </div>,
         { duration: 5000 }
       );
@@ -514,7 +516,7 @@ export default function CompleteVisit({ t }) {
       navigate(-1);
     } catch (err) {
       console.error('[CompleteVisit] handleSubmit error:', err);
-      toast.error('Failed to save visit locally.');
+      toast.error(t('completeVisit.saveFailedToast', 'Failed to save visit locally.'));
     } finally {
       setLoading(false);
     }
@@ -530,14 +532,16 @@ export default function CompleteVisit({ t }) {
           <ArrowLeft size={20} />
         </button>
         <div className="flex-1 min-w-0">
-          <h1 className="text-base font-bold text-slate-900 leading-tight">Complete Visit</h1>
+          <h1 className="text-base font-bold text-slate-900 leading-tight">{t('completeVisit', 'Complete Visit')}</h1>
           {visitInfo && (
-            <p className="text-xs text-slate-400 truncate">{visitInfo.patient} · {visitInfo.type}</p>
+            <p className="text-xs text-slate-400 truncate">
+              {visitInfo.patient} · {t('visitType.' + (visitInfo.type || '').toLowerCase(), visitInfo.type)}
+            </p>
           )}
         </div>
         {!isServerReachable && (
           <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-full border border-amber-200">
-            Offline
+            {t('offline', 'Offline')}
           </span>
         )}
       </div>
@@ -550,25 +554,25 @@ export default function CompleteVisit({ t }) {
               <X className="text-red-500 w-6 h-6" />
             </div>
             <div>
-              <p className="text-base font-bold text-red-800">Visit Record Not Found</p>
+              <p className="text-base font-bold text-red-800">{t('visitNotFoundTitle', 'Visit Record Not Found')}</p>
               <p className="text-sm text-red-600 mt-1">
-                Could not load this visit from local storage or server.<br />
-                Please go back and try again, or check your internet connection.
+                {t('visitNotFoundDesc1', 'Could not load this visit from local storage or server.')}<br />
+                {t('visitNotFoundDesc2', 'Please go back and try again, or check your internet connection.')}
               </p>
-              <p className="text-xs text-red-400 mt-2 font-mono">Visit ID: {id}</p>
+              <p className="text-xs text-red-400 mt-2 font-mono">{t('visitIdLabel', 'Visit ID: {{id}}', { id })}</p>
             </div>
             <div className="flex gap-3 mt-1">
               <button
                 onClick={() => { setVisitNotFound(false); window.location.reload(); }}
                 className="px-5 py-2.5 bg-red-600 text-white rounded-xl font-bold text-sm active:scale-95 transition-transform"
               >
-                Retry
+                {t('retry', 'Retry')}
               </button>
               <button
                 onClick={() => navigate(-1)}
                 className="px-5 py-2.5 bg-white border border-red-200 text-red-700 rounded-xl font-bold text-sm active:scale-95 transition-transform"
               >
-                Go Back
+                {t('goBack', 'Go Back')}
               </button>
             </div>
           </div>
@@ -581,16 +585,16 @@ export default function CompleteVisit({ t }) {
           <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-5 flex flex-col items-center text-center gap-3">
             <CheckCircle2 className="text-emerald-500 w-12 h-12" />
             <div>
-              <p className="text-base font-bold text-emerald-800">Visit Already Completed</p>
+              <p className="text-base font-bold text-emerald-800">{t('visitAlreadyCompletedTitle', 'Visit Already Completed')}</p>
               <p className="text-sm text-emerald-600 mt-1">
-                This visit has already been marked as completed. View the medical history in the patient's report folder.
+                {t('visitAlreadyCompletedDesc', "This visit has already been marked as completed. View the medical history in the patient's report folder.")}
               </p>
             </div>
             <button
               onClick={() => navigate(-1)}
               className="mt-2 px-6 py-2.5 bg-emerald-600 text-white rounded-xl font-bold text-sm active:scale-95 transition-transform"
             >
-              Go Back
+              {t('goBack', 'Go Back')}
             </button>
           </div>
         </div>
@@ -600,17 +604,17 @@ export default function CompleteVisit({ t }) {
         <>
           <div className="max-w-lg mx-auto px-4 py-4 pb-[calc(9rem+env(safe-area-inset-bottom))] space-y-5">
             {/* ── 1. Vitals ── */}
-            <FormSection title="Vitals">
+            <FormSection title={t('completeVisit.vitals', 'Vitals')}>
               <div className="grid grid-cols-2 gap-3">
-                <Field label="Blood Pressure" placeholder="120/80" value={bp} onChange={setBp} />
-                <Field label="Blood Sugar (mg/dL)" placeholder="110" type="number" value={sugar} onChange={setSugar} />
-                <Field label="Weight (kg)" placeholder="65.5" type="number" step="0.1" value={weight} onChange={setWeight} />
-                <Field label="Height (cm)" placeholder="165" type="number" value={height} onChange={setHeight} />
+                <Field label={t('bloodpressure', 'Blood Pressure')} placeholder="120/80" value={bp} onChange={setBp} />
+                <Field label={t('bloodsugarmgdl', 'Blood Sugar (mg/dL)')} placeholder="110" type="number" value={sugar} onChange={setSugar} />
+                <Field label={t('weightkg', 'Weight (kg)')} placeholder="65.5" type="number" step="0.1" value={weight} onChange={setWeight} />
+                <Field label={t('heightcm', 'Height (cm)')} placeholder="165" type="number" value={height} onChange={setHeight} />
               </div>
             </FormSection>
 
             {/* ── 2. Treatment Status ── */}
-            <FormSection title="Treatment Status">
+            <FormSection title={t('completeVisit.treatmentStatus', 'Treatment Status')}>
               <SegmentedPills
                 options={TREATMENT_OPTS}
                 value={treatmentStatus}
@@ -619,10 +623,10 @@ export default function CompleteVisit({ t }) {
             </FormSection>
 
             {/* ── 3. Condition & Notes ── */}
-            <FormSection title="Condition">
+            <FormSection title={t('completeVisit.condition', 'Condition')}>
               <div className="space-y-3">
                 <div>
-                  <label className={lbl}>Severity</label>
+                  <label className={lbl}>{t('severity', 'Severity')}</label>
                   <SegmentedPills
                     options={SEVERITY_OPTS}
                     value={severity}
@@ -630,11 +634,11 @@ export default function CompleteVisit({ t }) {
                   />
                 </div>
                 <div>
-                  <label className={lbl}>Notes</label>
+                  <label className={lbl}>{t('notes', 'Notes')}</label>
                   <textarea
                     rows={3}
                     className={inp + ' resize-none'}
-                    placeholder="Symptoms, diagnosis, observations…"
+                    placeholder={t('completeVisit.notesPlaceholder', 'Symptoms, diagnosis, observations…')}
                     value={notes}
                     onChange={e => setNotes(e.target.value)}
                   />
@@ -643,10 +647,10 @@ export default function CompleteVisit({ t }) {
             </FormSection>
 
             {/* ── 4. Medicine ── */}
-            <FormSection title="Medicine">
+            <FormSection title={t('completeVisit.medicine', 'Medicine')}>
               {/* Yes / No toggle */}
               <div className="mb-3">
-                <label className={lbl}>Was medicine prescribed?</label>
+                <label className={lbl}>{t('completeVisit.wasMedicinePrescribed', 'Was medicine prescribed?')}</label>
                 <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-0.5 gap-0.5">
                   {['Yes', 'No'].map(opt => {
                     const active = (opt === 'Yes') === medicinePrescribed;
@@ -661,7 +665,7 @@ export default function CompleteVisit({ t }) {
                             : 'text-slate-400'
                         }`}
                       >
-                        {opt}
+                        {opt === 'Yes' ? t('yes', 'Yes') : t('no', 'No')}
                       </button>
                     );
                   })}
@@ -676,7 +680,7 @@ export default function CompleteVisit({ t }) {
                     {medicines.map((med, idx) => (
                       <div key={idx} className="bg-slate-50 border border-slate-200 rounded-2xl p-4 relative space-y-3">
                         <div className="flex justify-between items-center pr-8">
-                          <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Medication #{idx + 1}</span>
+                          <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">{t('completeVisit.medicationNum', 'Medication #{{count}}', { count: idx + 1 })}</span>
                           {medicines.length > 1 && (
                             <button
                               type="button"
@@ -688,14 +692,14 @@ export default function CompleteVisit({ t }) {
                           )}
                         </div>
 
-                        <Field label="Medicine Name" placeholder="e.g. Paracetamol" value={med.name} onChange={v => updateMed(idx, 'name', v)} />
+                        <Field label={t('completeVisit.medicineName', 'Medicine Name')} placeholder={t('completeVisit.medicineNamePlaceholder', 'e.g. Paracetamol')} value={med.name} onChange={v => updateMed(idx, 'name', v)} />
 
                         <div className="grid grid-cols-2 gap-3">
-                          <Field label="Dosage" placeholder="e.g. 1-0-1" value={med.dosage} onChange={v => updateMed(idx, 'dosage', v)} />
-                          <Field label="Duration" placeholder="e.g. 5 days" value={med.duration} onChange={v => updateMed(idx, 'duration', v)} />
+                          <Field label={t('completeVisit.dosage', 'Dosage')} placeholder={t('completeVisit.dosagePlaceholder', 'e.g. 1-0-1')} value={med.dosage} onChange={v => updateMed(idx, 'dosage', v)} />
+                          <Field label={t('completeVisit.duration', 'Duration')} placeholder={t('completeVisit.durationPlaceholder', 'e.g. 5 days')} value={med.duration} onChange={v => updateMed(idx, 'duration', v)} />
                         </div>
 
-                        <Field label="Special Instructions (optional)" placeholder="e.g. Take after meals" value={med.notes} onChange={v => updateMed(idx, 'notes', v)} />
+                        <Field label={t('completeVisit.instructions', 'Special Instructions (optional)')} placeholder={t('completeVisit.instructionsPlaceholder', 'e.g. Take after meals')} value={med.notes} onChange={v => updateMed(idx, 'notes', v)} />
                       </div>
                     ))}
                   </div>
@@ -705,13 +709,13 @@ export default function CompleteVisit({ t }) {
                     onClick={addMed}
                     className="w-full py-2.5 border-2 border-dashed border-slate-200 hover:border-slate-300 text-slate-500 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-colors"
                   >
-                    <Plus size={14} /> Add Another Medication
+                    <Plus size={14} /> {t('completeVisit.addMedication', 'Add Another Medication')}
                   </button>
 
                   {/* Prescriber Metadata */}
                   <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
                     <div>
-                      <label className={lbl}>Prescribed By</label>
+                      <label className={lbl}>{t('completeVisit.prescribedBy', 'Prescribed By')}</label>
                       <div className="flex flex-wrap gap-1.5">
                         {PRESCRIBER_TYPES.map(opt => (
                           <button
@@ -724,15 +728,15 @@ export default function CompleteVisit({ t }) {
                                 : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
                             }`}
                           >
-                            {opt}
+                            {t((opt).toLowerCase(), opt)}
                           </button>
                         ))}
                       </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">
-                      <Field label="Prescriber Name" placeholder="Dr. Sharma" value={prescriberName} onChange={setPrescriberName} />
-                      <Field label="Clinic / Hospital Name" placeholder="PHC Village" value={clinicName} onChange={setClinicName} />
+                      <Field label={t('completeVisit.prescriberName', 'Prescriber Name')} placeholder={t('completeVisit.prescriberNamePlaceholder', 'Dr. Sharma')} value={prescriberName} onChange={setPrescriberName} />
+                      <Field label={t('completeVisit.clinicHospitalName', 'Clinic / Hospital Name')} placeholder={t('completeVisit.clinicHospitalPlaceholder', 'PHC Village')} value={clinicName} onChange={setClinicName} />
                     </div>
                   </div>
                 </div>
@@ -740,24 +744,24 @@ export default function CompleteVisit({ t }) {
             </FormSection>
 
             {/* ── Prescription Photo Attachment ── */}
-            <FormSection title="Prescription Photo">
+            <FormSection title={t('completeVisit.prescriptionPhoto', 'Prescription Photo')}>
               <div className="space-y-3">
                 <div className="flex justify-between items-center">
-                  <label className={lbl}>Attach Photos (optional)</label>
+                  <label className={lbl}>{t('completeVisit.attachPhotos', 'Attach Photos (optional)')}</label>
                   <div className="flex gap-2">
                     <button
                       type="button"
                       onClick={() => cameraRef.current?.click()}
                       className="flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 text-primary font-bold text-xs rounded-full"
                     >
-                      <Camera size={14} /> Capture
+                      <Camera size={14} /> {t('completeVisit.capture', 'Capture')}
                     </button>
                     <button
                       type="button"
                       onClick={() => galleryRef.current?.click()}
                       className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 text-slate-600 font-bold text-xs rounded-full"
                     >
-                      <Upload size={14} /> Gallery
+                      <Upload size={14} /> {t('completeVisit.gallery', 'Gallery')}
                     </button>
                     <input type="file" ref={cameraRef} onChange={onCamera} className="hidden" accept="image/*" capture="environment" />
                     <input type="file" ref={galleryRef} onChange={onGallery} className="hidden" accept="image/*" multiple />
@@ -784,8 +788,8 @@ export default function CompleteVisit({ t }) {
             </FormSection>
 
             {/* ── 5. Follow-Up ── */}
-            <FormSection title="Next Checkup">
-              <label className={lbl}>Date (optional)</label>
+            <FormSection title={t('completeVisit.nextCheckup', 'Next Checkup')}>
+              <label className={lbl}>{t('completeVisit.dateOptional', 'Date (optional)')}</label>
               <input
                 type="date"
                 className={inp}
@@ -796,13 +800,13 @@ export default function CompleteVisit({ t }) {
               {nextCheckup ? (
                 <p className="mt-2 text-sm text-emerald-700 font-semibold flex items-center gap-1.5">
                   <CheckCircle2 size={15} />
-                  Follow-up on {new Date(nextCheckup + 'T00:00:00').toLocaleDateString('en-IN', {
+                  {t('completeVisit.followUpOn', 'Follow-up on {{date}}', { date: new Date(nextCheckup + 'T00:00:00').toLocaleDateString('en-IN', {
                     weekday: 'short', day: 'numeric', month: 'short', year: 'numeric',
-                  })}
+                  }) })}
                 </p>
               ) : (
                 <p className="mt-1.5 text-xs text-slate-400">
-                  Leave blank if no follow-up needed.
+                  {t('completeVisit.leaveBlankFollowup', 'Leave blank if no follow-up needed.')}
                 </p>
               )}
             </FormSection>
@@ -821,8 +825,8 @@ export default function CompleteVisit({ t }) {
                   }`}
                 >
                   {loading
-                    ? <><Loader2 className="w-4 h-4 animate-spin" /> {uploadingImages ? 'Uploading…' : 'Saving…'}</>
-                    : <><Save className="w-4 h-4" /> {nextCheckup ? 'Complete & Schedule Follow-up' : 'Save & Complete Visit'}</>
+                    ? <><Loader2 className="w-4 h-4 animate-spin" /> {uploadingImages ? t('uploading', 'Uploading…') : t('saving', 'Saving…')}</>
+                    : <><Save className="w-4 h-4" /> {nextCheckup ? t('completeVisit.completeAndSchedule', 'Complete & Schedule Follow-up') : t('completeVisit.saveAndComplete', 'Save & Complete Visit')}</>
                   }
                 </button>
               </div>
@@ -838,10 +842,22 @@ export default function CompleteVisit({ t }) {
 // ── SegmentedPills ────────────────────────────────────────────────────────────
 
 function SegmentedPills({ options, value, onChange }) {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-wrap gap-2">
       {options.map(opt => {
         const active = opt.value === value;
+
+        // Translate labels for treatment status / severity
+        let displayLabel = opt.label || opt.value;
+        if (opt.value === 'Ongoing Treatment') displayLabel = t('status.ongoing', 'Ongoing');
+        else if (opt.value === 'Completed Treatment') displayLabel = t('status.completed', 'Completed');
+        else if (opt.value === 'Referred to Hospital') displayLabel = t('status.referred', 'Referred');
+        else if (opt.value === 'Emergency Attention Needed') displayLabel = t('status.emergency', 'Emergency');
+        else if (opt.value === 'Mild') displayLabel = t('mild', 'Mild');
+        else if (opt.value === 'Moderate') displayLabel = t('moderate', 'Moderate');
+        else if (opt.value === 'Severe') displayLabel = t('severe', 'Severe');
+
         return (
           <button
             key={opt.value}
@@ -853,7 +869,7 @@ function SegmentedPills({ options, value, onChange }) {
                 : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
             }`}
           >
-            {opt.label || opt.value}
+            {displayLabel}
           </button>
         );
       })}

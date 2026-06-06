@@ -50,14 +50,14 @@ export default function PatientList({ onOpenAddVisit }) {
       }
       const diff = Date.now() - Number(ts);
       if (diff < 60_000) {
-        setLastSyncText('Last synced just now');
+        setLastSyncText(t('reports.lastSyncedJustNow'));
       } else {
         const mins = Math.floor(diff / 60_000);
         if (mins < 60) {
-          setLastSyncText(`Last synced ${mins} min${mins > 1 ? 's' : ''} ago`);
+          setLastSyncText(mins > 1 ? t('reminders.lastSyncedMinutesAgoPlural', { count: mins }) : t('reminders.lastSyncedMinutesAgo', { count: mins }));
         } else {
           const hours = Math.floor(mins / 60);
-          setLastSyncText(`Last synced ${hours} hour${hours > 1 ? 's' : ''} ago`);
+          setLastSyncText(hours > 1 ? t('reminders.lastSyncedHoursAgoPlural', { count: hours }) : t('reminders.lastSyncedHoursAgo', { count: hours }));
         }
       }
     };
@@ -124,10 +124,10 @@ export default function PatientList({ onOpenAddVisit }) {
         setSelectedPatient(null);
         setIsDetailsOpen(false);
       }
-      toast.success(`${deleteTarget.name} and all records deleted.`);
+      toast.success(t('patients.deleteSuccess', '{{name}} and all records deleted.', { name: deleteTarget.name }));
     } catch (err) {
       console.error('[PatientList] delete failed:', err);
-      toast.error('Failed to delete patient. Please try again.');
+      toast.error(t('patients.deleteFailed', 'Failed to delete patient. Please try again.'));
     } finally {
       setDeleteLoading(false);
       setDeleteTarget(null);
@@ -162,7 +162,7 @@ export default function PatientList({ onOpenAddVisit }) {
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-6">
         <BrandLogo compact={true} size="sm" className="opacity-40 animate-pulse pointer-events-none" />
         <div className="w-14 h-14 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
-        <p className="text-on-surface-variant font-body font-medium">Accessing Patient Records…</p>
+        <p className="text-on-surface-variant font-body font-medium">{t('patients.accessingRecords', 'Accessing Patient Records…')}</p>
       </div>
     );
   }
@@ -179,12 +179,12 @@ export default function PatientList({ onOpenAddVisit }) {
             : <AlertTriangle className="w-10 h-10 text-error" />}
         </div>
         <h2 className="text-2xl font-headline font-bold text-on-surface">
-          {error === 'unauthorized' ? 'Session Expired' : 'Server Unreachable'}
+          {error === 'unauthorized' ? t('patients.sessionExpired', 'Session Expired') : t('patients.serverUnreachable', 'Server Unreachable')}
         </h2>
         <p className="text-on-surface-variant text-sm font-body leading-relaxed">
           {error === 'unauthorized'
-            ? 'Your session has expired. Please log in again.'
-            : 'Could not connect to the medical server. The app will keep retrying automatically.'}
+            ? t('patients.sessionExpiredDesc', 'Your session has expired. Please log in again.')
+            : t('patients.serverUnreachableDesc', 'Could not connect to the medical server. The app will keep retrying automatically.')}
         </p>
         <div className="flex gap-3 w-full">
           <button
@@ -192,14 +192,14 @@ export default function PatientList({ onOpenAddVisit }) {
             className="flex-1 bg-primary text-on-primary px-6 py-3 rounded-xl font-body font-semibold flex items-center justify-center gap-2 hover:opacity-90 active:scale-95 transition-all"
           >
             <RefreshCw size={18} />
-            Retry Now
+            {t('patients.retryNow', 'Retry Now')}
           </button>
           {error === 'unauthorized' && (
             <a
               href="/login"
               className="flex-1 bg-surface-container-high text-on-surface px-6 py-3 rounded-xl font-body font-semibold flex items-center justify-center"
             >
-              Login
+              {t('patients.login', 'Login')}
             </a>
           )}
         </div>
@@ -261,7 +261,7 @@ export default function PatientList({ onOpenAddVisit }) {
                 disabled={manualSyncing}
                 onClick={async () => {
                   setManualSyncing(true);
-                  const toastId = toast.loading('Syncing patients...');
+                  const toastId = toast.loading(t('patients.syncingPatientsLoading', 'Syncing patients...'));
                   try {
                     const result = await manualSyncPatients();
                     if (result.status === 'success') {
@@ -286,7 +286,7 @@ export default function PatientList({ onOpenAddVisit }) {
                 className="w-full h-11 flex items-center justify-center gap-2 bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200/50 px-4 rounded-xl font-body font-semibold transition-all disabled:opacity-60 disabled:cursor-not-allowed active:scale-95 text-xs sm:text-sm whitespace-nowrap"
               >
                 <span className={`material-symbols-outlined text-[20px] ${manualSyncing ? 'animate-spin' : ''}`}>sync</span>
-                <span>{manualSyncing ? 'Syncing Patients...' : 'Sync Patients'}</span>
+                <span>{manualSyncing ? t('patients.syncingPatientsButton', 'Syncing Patients...') : t('patients.syncPatients', 'Sync Patients')}</span>
               </button>
               {lastSyncText && (
                 <span className="text-[10px] text-slate-400 font-medium text-center md:text-right">{lastSyncText}</span>
@@ -484,6 +484,7 @@ export default function PatientList({ onOpenAddVisit }) {
 // ─── DeleteConfirmModal ────────────────────────────────────────────────────────
 
 function DeleteConfirmModal({ patient, loading, onConfirm, onCancel }) {
+  const { t } = useTranslation();
   return (
     <div
       role="dialog"
@@ -505,9 +506,9 @@ function DeleteConfirmModal({ patient, loading, onConfirm, onCancel }) {
             </div>
             <div>
               <h2 id="delete-modal-title" className="text-white font-headline font-bold text-lg leading-tight">
-                Delete Patient Record
+                {t('patients.deletePatientRecord', 'Delete Patient Record')}
               </h2>
-              <p className="text-rose-100 text-xs font-body mt-0.5">Permanent &amp; irreversible action</p>
+              <p className="text-rose-100 text-xs font-body mt-0.5">{t('patients.permanentIrreversible', 'Permanent & irreversible action')}</p>
             </div>
           </div>
         </div>
@@ -515,33 +516,29 @@ function DeleteConfirmModal({ patient, loading, onConfirm, onCancel }) {
         {/* Body */}
         <div className="px-6 py-5 space-y-4">
           <p className="text-on-surface font-body text-sm leading-relaxed">
-            Are you sure you want to permanently delete patient{' '}
-            <span className="font-black text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded">
-              {patient.name}
-            </span>
-            ?
+            {t('patients.deleteConfirmText', 'Are you sure you want to permanently delete patient {{name}}?', { name: patient.name })}
           </p>
 
           <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 space-y-1.5">
             <p className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-2">
-              This will also permanently remove:
+              {t('patients.thisWillAlsoRemove', 'This will also permanently remove:')}
             </p>
             {[
-              'All visit records &amp; medical history',
-              'All reports &amp; uploaded files',
-              'All reminders &amp; follow-up schedules',
-              'All prescription photos',
-              'All offline cached data',
+              t('patients.removeVisitRecords', 'All visit records & medical history'),
+              t('patients.removeReports', 'All reports & uploaded files'),
+              t('patients.removeReminders', 'All reminders & follow-up schedules'),
+              t('patients.removePrescriptions', 'All prescription photos'),
+              t('patients.removeOfflineCached', 'All offline cached data'),
             ].map((item) => (
               <div key={item} className="flex items-center gap-2 text-sm font-body text-on-surface-variant">
                 <span className="w-1.5 h-1.5 rounded-full bg-rose-400 flex-shrink-0" />
-                <span dangerouslySetInnerHTML={{ __html: item }} />
+                <span>{item}</span>
               </div>
             ))}
           </div>
 
           <p className="text-[11px] font-bold text-rose-500 text-center pt-1">
-            ⚠ This action cannot be undone.
+            {t('patients.actionCannotBeUndone', '⚠ This action cannot be undone.')}
           </p>
         </div>
 
@@ -553,7 +550,7 @@ function DeleteConfirmModal({ patient, loading, onConfirm, onCancel }) {
             disabled={loading}
             className="flex-1 py-3 rounded-xl border border-outline-variant/30 text-on-surface-variant font-body font-semibold text-sm hover:bg-slate-50 transition-all active:scale-95 disabled:opacity-50"
           >
-            Cancel
+            {t('cancel', 'Cancel')}
           </button>
           <button
             id="btn-confirm-delete"
@@ -562,9 +559,9 @@ function DeleteConfirmModal({ patient, loading, onConfirm, onCancel }) {
             className="flex-1 py-3 rounded-xl bg-gradient-to-r from-rose-500 to-red-600 text-white font-body font-bold text-sm shadow-lg hover:opacity-90 transition-all active:scale-95 disabled:opacity-60 flex items-center justify-center gap-2"
           >
             {loading ? (
-              <><Loader2 size={15} className="animate-spin" /> Deleting…</>
+              <><Loader2 size={15} className="animate-spin" /> {t('patients.deleting', 'Deleting…')}</>
             ) : (
-              <><Trash2 size={15} /> Delete Permanently</>
+              <><Trash2 size={15} /> {t('patients.deletePermanently', 'Delete Permanently')}</>
             )}
           </button>
         </div>

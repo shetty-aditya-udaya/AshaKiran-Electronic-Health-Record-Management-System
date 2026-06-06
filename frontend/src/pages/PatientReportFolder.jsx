@@ -41,16 +41,26 @@ const TREATMENT_COLORS = {
 };
 
 function TreatmentBadge({ status }) {
+  const { t } = useTranslation();
   if (!status) return null;
   const cls = TREATMENT_COLORS[status] || 'bg-slate-50 text-slate-600 border-slate-200/60';
+  const translationMap = {
+    'Ongoing Treatment': 'patientFolder.ongoingTreatment',
+    'Completed Treatment': 'patientFolder.completedTreatment',
+    'Referred to Hospital': 'patientFolder.referredToHospital',
+    'Emergency Attention Needed': 'patientFolder.emergencyAttentionNeeded'
+  };
+  const key = translationMap[status];
+  const displayStatus = key ? t(key, status) : status;
   return (
     <span className={`h-5 px-2 rounded text-[10px] font-semibold uppercase tracking-wider border flex items-center ${cls}`}>
-      {status}
+      {displayStatus}
     </span>
   );
 }
 
 function SyncBadge({ syncStatus }) {
+  const { t } = useTranslation();
   if (!syncStatus || syncStatus === 'synced') return null;
   const meta = {
     pending: { cls: 'bg-amber-50/80 text-amber-700 border-amber-100/50' },
@@ -60,7 +70,7 @@ function SyncBadge({ syncStatus }) {
   if (!meta) return null;
   return (
     <span className={`h-5 px-2 text-[10px] font-semibold uppercase tracking-wider rounded border flex items-center ${meta.cls}`}>
-      {syncStatus}
+      {t('status.' + syncStatus.toLowerCase(), syncStatus)}
     </span>
   );
 }
@@ -283,7 +293,7 @@ export default function PatientReportFolder({ t: propT }) {
       await loadLocal();
     } catch (err) {
       if (!(err instanceof NetworkError)) console.warn('[PatientReportFolder]', err);
-      toast.error('Showing locally cached data 📡');
+      toast.error(t('patientFolder.offlineCachedData', 'Showing locally cached data 📡'));
     } finally {
       setLoading(false);
     }

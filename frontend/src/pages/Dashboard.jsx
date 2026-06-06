@@ -37,13 +37,13 @@ function pctOf(val, total) {
   return total > 0 ? Math.min(100, Math.max(0, Math.round((val / total) * 100))) : 0;
 }
 
-function timeAgo(ts) {
+function timeAgo(ts, t) {
   if (!ts) return '';
   const diff = (Date.now() - new Date(ts)) / 1000;
-  if (diff < 60) return 'Just now';
-  if (diff < 3600) return `${Math.floor(diff / 60)} min ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)} hrs ago`;
-  return `${Math.floor(diff / 86400)} days ago`;
+  if (diff < 60) return t('dashboard.justNow');
+  if (diff < 3600) return t('dashboard.minutesAgo', { count: Math.floor(diff / 60) });
+  if (diff < 86400) return t('dashboard.hoursAgo', { count: Math.floor(diff / 3600) });
+  return t('dashboard.daysAgo', { count: Math.floor(diff / 86400) });
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -119,7 +119,7 @@ function DonutChart({ segments, size = 130, strokeWidth = 22, label, sublabel, i
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
         {isEmpty
-          ? <span className="text-[10px] text-slate-400 font-medium text-center px-2 leading-tight">No data</span>
+          ? <span className="text-[10px] text-slate-400 font-medium text-center px-2 leading-tight">{typeof window !== 'undefined' && window.__dashboardT ? window.__dashboardT('dashboard.noData') : 'No data'}</span>
           : <>
               {label && <span className="text-xl font-bold text-slate-800 leading-none">{label}</span>}
               {sublabel && <span className="text-[10px] text-slate-400 font-medium mt-0.5">{sublabel}</span>}
@@ -142,7 +142,7 @@ function LineChart({ series, labels, width = 340, height = 160, empty }) {
   if (empty) {
     return (
       <div className="flex items-center justify-center h-32 text-xs text-slate-400 font-medium">
-        No monthly data available yet
+        {typeof window !== 'undefined' && window.__dashboardT ? window.__dashboardT('dashboard.noMonthlyData') : 'No monthly data available yet'}
       </div>
     );
   }
@@ -296,6 +296,75 @@ export default function Dashboard() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { isServerReachable, serverStatus } = useConnection();
+
+  const getAlertMessage = (alert) => {
+    const { type, count, message } = alert;
+    if (type === 'high_risk') {
+      return count > 1
+        ? t('dashboard.alertHighRiskPlural', { count })
+        : t('dashboard.alertHighRiskSingle', { count });
+    }
+    if (type === 'overdue_followup') {
+      const isReminder = message && message.toLowerCase().includes('reminder');
+      if (isReminder) {
+        return count > 1
+          ? t('dashboard.alertOverdueRemindersPlural', { count })
+          : t('dashboard.alertOverdueRemindersSingle', { count });
+      } else {
+        return count > 1
+          ? t('dashboard.alertOverdueVisitsPlural', { count })
+          : t('dashboard.alertOverdueVisitsSingle', { count });
+      }
+    }
+    if (type === 'followup_due') {
+      return count > 1
+        ? t('dashboard.alertVisitsTodayPlural', { count })
+        : t('dashboard.alertVisitsTodaySingle', { count });
+    }
+    return message;
+  };
+
+  const getActivityText = (act) => {
+    const { type, title, detail } = act;
+    let translatedTitle = title;
+    if (type === 'patient_registered') {
+      translatedTitle = t('dashboard.activityPatientRegistered', 'New patient registered');
+    } else if (type === 'visit_completed') {
+      translatedTitle = t('dashboard.activityVisitCompleted', 'Visit completed');
+    } else if (type === 'visit_scheduled') {
+      translatedTitle = t('dashboard.activityVisitScheduled', 'Visit scheduled');
+    } else if (type === 'report_added') {
+      translatedTitle = t('dashboard.activityReportAdded', 'Health record updated');
+    } else if (type === 'reminder_done') {
+      translatedTitle = t('dashboard.activityReminderDone', 'Follow-up completed');
+    } else if (type === 'reminder_generated') {
+      translatedTitle = t('dashboard.activityReminderGenerated', 'Reminder generated');
+    }
+
+    let translatedDetail = detail;
+    if (detail && detail.includes(' • ')) {
+      const parts = detail.split(' • ');
+      const name = parts[0] === 'Patient' ? t('patient', 'Patient') : parts[0];
+      let subDetail = parts[1];
+      if (subDetail === 'Village') {
+        subDetail = t('village', 'Village');
+      } else if (subDetail === 'General Checkup') {
+        subDetail = t('generalCheckup', 'General Checkup');
+      } else if (subDetail === 'Follow-up') {
+        subDetail = t('followUp', 'Follow-up');
+      }
+      translatedDetail = `${name} • ${subDetail}`;
+    } else if (detail === 'Report') {
+      translatedDetail = t('report', 'Report');
+    }
+    return { title: translatedTitle, detail: translatedDetail };
+  };
+
+  const getScheduleTitle = (title) => {
+    if (title === 'Home Visit') return t('homeVisit', 'Home Visit');
+    if (title === 'Follow-up') return t('followUp', 'Follow-up');
+    return title;
+  };
   const [user, setUser] = useState(null);
 
   // Analytics state
@@ -395,13 +464,16 @@ export default function Dashboard() {
   const chartEmpty    = monthlyTrend.length === 0 || (patientsMonthly.every(v => v === 0) && visitsMonthly.every(v => v === 0));
 
   // Quick actions
+  // Store t in window so sub-components (DonutChart, LineChart) can access it
+  window.__dashboardT = t;
+
   const quickActions = [
-    { icon: UserPlus,      label: 'Register Patient', color: '#0F766E', bg: '#EFF8F7', path: '/patients' },
-    { icon: PlusCircle,    label: 'Add Visit',        color: '#2563EB', bg: '#EFF6FF', path: '/patients' },
-    { icon: FolderHeart,   label: 'Health Record',    color: '#7C3AED', bg: '#F5F3FF', path: '/reports' },
-    { icon: Bell,          label: 'Reminders',        color: '#D97706', bg: '#FFFBEB', path: '/reminders' },
-    { icon: Activity,      label: 'Reports',          color: '#F43F5E', bg: '#FFF1F2', path: '/reports' },
-    { icon: ClipboardList, label: 'Programs',         color: '#0EA5E9', bg: '#F0F9FF', path: '/programmes' },
+    { icon: UserPlus,      label: t('dashboard.quickRegisterPatient'), color: '#0F766E', bg: '#EFF8F7', path: '/patients' },
+    { icon: PlusCircle,    label: t('dashboard.quickAddVisit'),        color: '#2563EB', bg: '#EFF6FF', path: '/patients' },
+    { icon: FolderHeart,   label: t('dashboard.quickHealthRecord'),    color: '#7C3AED', bg: '#F5F3FF', path: '/reports' },
+    { icon: Bell,          label: t('dashboard.quickReminders'),       color: '#D97706', bg: '#FFFBEB', path: '/reminders' },
+    { icon: Activity,      label: t('dashboard.quickReports'),         color: '#F43F5E', bg: '#FFF1F2', path: '/reports' },
+    { icon: ClipboardList, label: t('dashboard.quickPrograms'),        color: '#0EA5E9', bg: '#F0F9FF', path: '/programmes' },
   ];
 
   // ── Loading skeleton ───────────────────────────────────────────────────────
@@ -433,19 +505,19 @@ export default function Dashboard() {
         <header className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
           <div>
             <h1 className="text-2xl md:text-[26px] font-bold text-slate-900 tracking-tight flex items-center gap-2">
-              Namaste, {displayName} <span>👋</span>
+              {t('dashboard.namaste')}, {displayName} <span>👋</span>
             </h1>
             <p className="text-sm text-slate-500 mt-0.5 flex items-center gap-1.5">
               {locationText && <MapPin size={12} className="text-slate-400 flex-shrink-0" />}
-              Here&apos;s what&apos;s happening
-              {locationText ? ` in ${locationText}` : ''} today.
+              {t('dashboard.hereIsWhatsHappening')}
+              {locationText ? ` ${t('dashboard.inLocation', { location: locationText })}` : ` ${t('dashboard.todayGeneral')}`}
             </p>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
             <button onClick={handleRefresh}
               className="p-2 rounded-lg bg-white border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-800 transition-all"
-              title="Refresh dashboard">
+              title={t('dashboard.refreshDashboard')}>
               <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
             </button>
 
@@ -462,9 +534,9 @@ export default function Dashboard() {
         ══════════════════════════════════════════════════════════════════ */}
         <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard
-            label="Total Patients"
+            label={t('dashboard.totalPatients')}
             value={stats.totalPatients}
-            sub={stats.totalPatients === 0 ? 'No patients registered' : `${stats.totalPatients} in registry`}
+            sub={stats.totalPatients === 0 ? t('dashboard.noPatientsRegistered') : t('dashboard.patientsInRegistry', { count: stats.totalPatients })}
             subColor={stats.totalPatients === 0 ? '#94A3B8' : '#16A34A'}
             icon={Users} iconBg="#EFF8F7" iconColor="#0F766E"
             sparkData={patientsMonthly}
@@ -472,13 +544,13 @@ export default function Dashboard() {
             onClick={() => navigate('/patients')}
           />
           <StatCard
-            label="Today's Visits"
+            label={t('dashboard.todaysVisits')}
             value={stats.todayVisits}
             sub={stats.todayVisits === null
-              ? 'No visits scheduled'
+              ? t('dashboard.noVisitsScheduled')
               : stats.pendingVisitsToday > 0
-              ? `+${stats.pendingVisitsToday} pending today`
-              : 'All completed'}
+              ? t('dashboard.pendingToday', { count: stats.pendingVisitsToday })
+              : t('dashboard.allCompleted')}
             subColor={stats.todayVisits === null ? '#94A3B8' : stats.pendingVisitsToday > 0 ? '#D97706' : '#16A34A'}
             icon={CalendarDays} iconBg="#EFF6FF" iconColor="#2563EB"
             sparkData={visitsMonthly}
@@ -486,11 +558,11 @@ export default function Dashboard() {
             onClick={() => navigate('/reminders')}
           />
           <StatCard
-            label="Follow-ups Due"
+            label={t('dashboard.followUpsDue')}
             value={stats.followUpsDue}
             sub={stats.overdueFollowUps > 0
-              ? `${stats.overdueFollowUps} overdue`
-              : stats.followUpsDue === 0 ? 'None due' : 'Requires attention'}
+              ? t('dashboard.overdueCount', { count: stats.overdueFollowUps })
+              : stats.followUpsDue === 0 ? t('dashboard.noneDue') : t('dashboard.requiresAttention')}
             subColor={stats.overdueFollowUps > 0 ? '#F43F5E' : stats.followUpsDue > 0 ? '#D97706' : '#16A34A'}
             icon={Clock} iconBg="#FFFBEB" iconColor="#D97706"
             sparkData={[]}
@@ -498,13 +570,13 @@ export default function Dashboard() {
             onClick={() => navigate('/reminders')}
           />
           <StatCard
-            label="High Risk Cases"
+            label={t('dashboard.highRiskCases')}
             value={stats.highRiskCount}
             sub={stats.highRiskCount === null 
-              ? 'No patients registered' 
+              ? t('dashboard.noPatientsRegistered') 
               : stats.highRiskCount === 0 
-              ? 'All patients stable' 
-              : 'Under monitoring'}
+              ? t('dashboard.allPatientsStable') 
+              : t('dashboard.underMonitoring')}
             subColor={stats.highRiskCount > 0 ? '#F43F5E' : '#16A34A'}
             icon={AlertTriangle} iconBg="#FFF1F2" iconColor="#F43F5E"
             sparkData={[]}
@@ -522,21 +594,22 @@ export default function Dashboard() {
           <div className="bg-white rounded-2xl border border-slate-100 p-5"
             style={{ boxShadow: '0 1px 4px rgba(15,23,42,0.05)' }}>
             <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-bold text-slate-800">Recent Activities</h2>
+              <h2 className="text-sm font-bold text-slate-800">{t('dashboard.recentActivities')}</h2>
               <button onClick={() => navigate('/reminders')}
                 className="text-xs font-semibold text-teal-600 hover:text-teal-800 transition-colors">
-                View all
+                {t('dashboard.viewAll')}
               </button>
             </div>
 
             {recentActivities.length === 0 ? (
-              <EmptyState icon={Inbox} message="No recent activity yet.&#10;Register a patient to get started."
-                action="Register Patient" onAction={() => navigate('/patients/add')} />
+              <EmptyState icon={Inbox} message={t('dashboard.noRecentActivity')}
+                action={t('dashboard.registerPatientAction')} onAction={() => navigate('/patients/add')} />
             ) : (
               <div className="space-y-0">
                 {recentActivities.map((a, i) => {
                   const meta = ACTIVITY_META[a.type] || ACTIVITY_META.default;
                   const Icon = meta.icon;
+                  const { title: transTitle, detail: transDetail } = getActivityText(a);
                   return (
                     <div key={i} className="flex items-start gap-3 py-2.5 border-b border-slate-50 last:border-0">
                       <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5"
@@ -544,11 +617,11 @@ export default function Dashboard() {
                         <Icon size={14} style={{ color: meta.color }} />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-[12.5px] font-semibold text-slate-800 leading-tight">{a.title}</p>
-                        <p className="text-[11px] text-slate-400 mt-0.5 truncate">{a.detail}</p>
+                        <p className="text-[12.5px] font-semibold text-slate-800 leading-tight">{transTitle}</p>
+                        <p className="text-[11px] text-slate-400 mt-0.5 truncate">{transDetail}</p>
                       </div>
                       <span className="text-[10px] text-slate-400 font-medium flex-shrink-0 whitespace-nowrap">
-                        {timeAgo(a.timestamp)}
+                        {timeAgo(a.timestamp, t)}
                       </span>
                     </div>
                   );
@@ -561,16 +634,16 @@ export default function Dashboard() {
           <div className="bg-white rounded-2xl border border-slate-100 p-5"
             style={{ boxShadow: '0 1px 4px rgba(15,23,42,0.05)' }}>
             <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-bold text-slate-800">Today&apos;s Schedule</h2>
+              <h2 className="text-sm font-bold text-slate-800">{t('dashboard.todaysSchedule')}</h2>
               <button onClick={() => navigate('/reminders')}
                 className="text-xs font-semibold text-teal-600 hover:text-teal-800 transition-colors">
-                View calendar
+                {t('dashboard.viewCalendar')}
               </button>
             </div>
 
             {todaySchedule.length === 0 ? (
-              <EmptyState icon={Calendar} message="No visits or follow-ups scheduled for today."
-                action="Add Visit" onAction={() => navigate('/reminders')} />
+              <EmptyState icon={Calendar} message={t('dashboard.noVisitsScheduledForToday')}
+                action={t('dashboard.addVisitAction')} onAction={() => navigate('/reminders')} />
             ) : (
               <div className="space-y-0">
                 {todaySchedule.map((s, i) => (
@@ -591,7 +664,7 @@ export default function Dashboard() {
                     </div>
                     <div className="flex-1 min-w-0 flex items-start justify-between gap-2">
                       <div>
-                        <p className="text-[12.5px] font-semibold text-slate-800 leading-tight">{s.title}</p>
+                        <p className="text-[12.5px] font-semibold text-slate-800 leading-tight">{getScheduleTitle(s.title)}</p>
                         <p className="text-[10.5px] text-slate-400 mt-0.5 truncate">{s.place}</p>
                       </div>
                       <span className={`text-[9.5px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 border ${
@@ -603,9 +676,9 @@ export default function Dashboard() {
                           ? 'bg-blue-50 text-blue-700 border-blue-200'
                           : 'bg-slate-50 text-slate-500 border-slate-200'
                       }`}>
-                        {s.status === 'completed' ? 'Completed' : 
-                         s.status === 'overdue' ? 'Overdue' : 
-                         s.status === 'pending' ? 'Today/Pending' : 'Upcoming'}
+                        {s.status === 'completed' ? t('dashboard.scheduleCompleted') : 
+                         s.status === 'overdue' ? t('dashboard.scheduleOverdue') : 
+                         s.status === 'pending' ? t('dashboard.schedulePending') : t('dashboard.scheduleUpcoming')}
                       </span>
                     </div>
                   </div>
@@ -620,7 +693,7 @@ export default function Dashboard() {
             {/* Quick Actions */}
             <div className="bg-white rounded-2xl border border-slate-100 p-5"
               style={{ boxShadow: '0 1px 4px rgba(15,23,42,0.05)' }}>
-              <h2 className="text-sm font-bold text-slate-800 mb-3">Quick Actions</h2>
+              <h2 className="text-sm font-bold text-slate-800 mb-3">{t('dashboard.quickActions')}</h2>
               <div className="grid grid-cols-3 gap-2">
                 {quickActions.map((qa, i) => (
                   <button key={i} onClick={() => navigate(qa.path)}
@@ -639,10 +712,10 @@ export default function Dashboard() {
             <div className="bg-white rounded-2xl border border-slate-100 p-5 flex-1"
               style={{ boxShadow: '0 1px 4px rgba(15,23,42,0.05)' }}>
               <div className="flex items-center justify-between mb-3">
-                <h2 className="text-sm font-bold text-slate-800">Alerts &amp; Notifications</h2>
+                <h2 className="text-sm font-bold text-slate-800">{t('dashboard.alertsNotifications')}</h2>
                 {alerts.length > 0 && (
                   <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-red-50 text-red-600 border border-red-200">
-                    {alerts.length} alert{alerts.length > 1 ? 's' : ''}
+                    {alerts.length > 1 ? t('dashboard.alertCountPlural', { count: alerts.length }) : t('dashboard.alertCountSingle', { count: alerts.length })}
                   </span>
                 )}
               </div>
@@ -653,8 +726,8 @@ export default function Dashboard() {
                     <CheckCircle2 size={13} className="text-emerald-600" />
                   </div>
                   <div>
-                    <p className="text-[11.5px] font-semibold text-emerald-800">All clear!</p>
-                    <p className="text-[10.5px] text-emerald-600 mt-0.5">No alerts for your patients today.</p>
+                    <p className="text-[11.5px] font-semibold text-emerald-800">{t('dashboard.allClear')}</p>
+                    <p className="text-[10.5px] text-emerald-600 mt-0.5">{t('dashboard.noAlertsToday')}</p>
                   </div>
                 </div>
               ) : (
@@ -669,11 +742,11 @@ export default function Dashboard() {
                           <Icon size={13} style={{ color: meta.color }} />
                         </div>
                         <div>
-                          <p className="text-[11.5px] font-medium text-slate-700 leading-snug">{a.message}</p>
+                          <p className="text-[11.5px] font-medium text-slate-700 leading-snug">{getAlertMessage(a)}</p>
                           <button onClick={() => navigate(meta.path)}
                             className="text-[10.5px] font-semibold mt-0.5 hover:opacity-80 transition-opacity"
                             style={{ color: meta.color }}>
-                            View details →
+                            {t('dashboard.viewDetails')}
                           </button>
                         </div>
                       </div>
@@ -693,27 +766,27 @@ export default function Dashboard() {
           {/* ── Patient Distribution (real categories) ── */}
           <div className="bg-white rounded-2xl border border-slate-100 p-5"
             style={{ boxShadow: '0 1px 4px rgba(15,23,42,0.05)' }}>
-            <h2 className="text-sm font-bold text-slate-800 mb-4">Patient Distribution</h2>
+            <h2 className="text-sm font-bold text-slate-800 mb-4">{t('dashboard.patientDistribution')}</h2>
 
             {donutEmpty ? (
               <div className="flex flex-col items-center gap-4">
                 <DonutChart segments={[]} size={130} strokeWidth={22} isEmpty />
                 <p className="text-xs text-slate-400 text-center font-medium">
-                  No patient data available.
-                  <br />Register patients to see distribution.
+                  {t('dashboard.noPatientData')}
+                  <br />{t('dashboard.registerToSeeDistribution')}
                 </p>
               </div>
             ) : (
               <div className="flex items-center gap-5">
                 <DonutChart segments={donutSegments} size={130} strokeWidth={22}
-                  label={distTotal} sublabel="Total" />
+                  label={distTotal} sublabel={t('reminders.statsTotal')} />
                 <div className="flex flex-col gap-2.5 flex-1">
                   {[
-                    { label: 'General',        count: distribution.general,  pct: pctOf(distribution.general,  distTotal), color: '#14B8A6' },
-                    { label: 'Maternal Health', count: distribution.maternal, pct: pctOf(distribution.maternal, distTotal), color: '#6366F1' },
-                    { label: 'Child Health',   count: distribution.child,    pct: pctOf(distribution.child,    distTotal), color: '#F97316' },
-                    { label: 'Chronic Care',   count: distribution.chronic,  pct: pctOf(distribution.chronic,  distTotal), color: '#A855F7' },
-                    { label: 'High Risk',      count: distribution.highRisk, pct: pctOf(distribution.highRisk, distTotal), color: '#F43F5E' },
+                    { label: t('dashboard.distributionGeneral'),  count: distribution.general,  pct: pctOf(distribution.general,  distTotal), color: '#14B8A6' },
+                    { label: t('dashboard.distributionMaternal'), count: distribution.maternal, pct: pctOf(distribution.maternal, distTotal), color: '#6366F1' },
+                    { label: t('dashboard.distributionChild'),    count: distribution.child,    pct: pctOf(distribution.child,    distTotal), color: '#F97316' },
+                    { label: t('dashboard.distributionChronic'),  count: distribution.chronic,  pct: pctOf(distribution.chronic,  distTotal), color: '#A855F7' },
+                    { label: t('dashboard.distributionHighRisk'), count: distribution.highRisk, pct: pctOf(distribution.highRisk, distTotal), color: '#F43F5E' },
                   ].filter(r => r.count > 0).map((row, i) => (
                     <div key={i} className="flex items-center gap-2">
                       <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: row.color }} />
@@ -732,15 +805,15 @@ export default function Dashboard() {
           <div className="bg-white rounded-2xl border border-slate-100 p-5"
             style={{ boxShadow: '0 1px 4px rgba(15,23,42,0.05)' }}>
             <div className="flex items-center justify-between mb-2">
-              <h2 className="text-sm font-bold text-slate-800">Monthly Overview</h2>
+              <h2 className="text-sm font-bold text-slate-800">{t('dashboard.monthlyOverview')}</h2>
               <div className="flex items-center gap-3">
                 <span className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-500">
                   <span className="w-2.5 h-1 rounded-full inline-block" style={{ background: '#14B8A6' }} />
-                  Patients Added
+                  {t('dashboard.patientsAdded')}
                 </span>
                 <span className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-500">
                   <span className="w-2.5 h-1 rounded-full inline-block" style={{ background: '#6366F1' }} />
-                  Visits Done
+                  {t('dashboard.visitsDone')}
                 </span>
               </div>
             </div>
@@ -755,7 +828,7 @@ export default function Dashboard() {
             />
             {lastSync && (
               <p className="text-[10px] text-slate-400 mt-1 text-right">
-                Updated {lastSync.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                {t('dashboard.updatedAt', { time: lastSync.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) })}
               </p>
             )}
           </div>
@@ -763,12 +836,12 @@ export default function Dashboard() {
           {/* ── Top Health Conditions (real diseases from patient records) ── */}
           <div className="bg-white rounded-2xl border border-slate-100 p-5"
             style={{ boxShadow: '0 1px 4px rgba(15,23,42,0.05)' }}>
-            <h2 className="text-sm font-bold text-slate-800 mb-4">Top Health Conditions</h2>
+            <h2 className="text-sm font-bold text-slate-800 mb-4">{t('dashboard.topHealthConditions')}</h2>
 
             {conditions.length === 0 ? (
               <EmptyState icon={Stethoscope}
-                message="No condition analytics available yet.&#10;Complete patient records to see trends."
-                action="View Patients" onAction={() => navigate('/patients')} />
+                message={t('dashboard.noConditionAnalytics')}
+                action={t('dashboard.viewPatients')} onAction={() => navigate('/patients')} />
             ) : (
               <div className="space-y-4">
                 {conditions.map((c, i) => {
@@ -786,7 +859,7 @@ export default function Dashboard() {
                         <div className="h-full rounded-full transition-all duration-1000"
                           style={{ width: `${pct}%`, background: color }} />
                       </div>
-                      <p className="text-[10px] text-slate-400 mt-0.5">{c.count} patient{c.count > 1 ? 's' : ''}</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">{c.count > 1 ? t('dashboard.patientCountPlural', { count: c.count }) : t('dashboard.patientCount', { count: c.count })}</p>
                     </div>
                   );
                 })}
