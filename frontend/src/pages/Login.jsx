@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useTranslation } from 'react-i18next';
-import { API_BASE_URL } from '../config/api';
+import { api } from '../utils/apiClient';
 
 export default function Login({ onLogin }) {
   const { t } = useTranslation();
@@ -15,23 +15,19 @@ export default function Login({ onLogin }) {
     e.preventDefault();
     setLoading(true);
     try {
-      const resp = await fetch(`${API_BASE_URL}/api/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
-      });
-      const data = await resp.json();
-      if (resp.ok) {
-        onLogin(data.user);
-        localStorage.setItem('token', data.token);
-        localStorage.setItem('user', JSON.stringify(data.user));
-        toast.success(t('welcomeBack', 'Welcome back, {{name}}!', { name: data.user.name }));
-        navigate('/dashboard');
-      } else {
-        toast.error(t('invalidCreds'));
-      }
+      const data = await api.post('/api/login', { email, password });
+      onLogin(data.user);
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
+      toast.success(t('welcomeBack', 'Welcome back, {{name}}!', { name: data.user.name }));
+      navigate('/dashboard');
     } catch (err) {
-      toast.error(t('connectionFailed', 'Connection failed'));
+      const errorMsg = err.data?.error || err.message;
+      if (err.status === 401 || err.status === 400) {
+        toast.error(t('invalidCreds'));
+      } else {
+        toast.error(t('connectionFailed', 'Connection failed') + `: ${errorMsg}`);
+      }
     } finally {
       setLoading(false);
     }

@@ -21,17 +21,26 @@ export default defineConfig({
         ]
       },
       workbox: {
+        skipWaiting: true,
+        clientsClaim: true,
+        cleanupOutdatedCaches: true,
+        cacheId: 'ashakiran-pwa-v1.1',
         globPatterns: ['**/*.{js,css,html,ico,png,jpg,jpeg,svg,webmanifest}'],
         runtimeCaching: [
           {
-            urlPattern: ({ url }) => url.pathname.startsWith('/api/') || url.href.includes('/api/'),
+            urlPattern: ({ url, request }) => {
+              const isApi = url.pathname.startsWith('/api/') || url.href.includes('/api/');
+              const isAuth = url.pathname.includes('/login') || url.pathname.includes('/refresh') || url.pathname.includes('/register');
+              const isGet = request ? request.method === 'GET' : true;
+              return isApi && !isAuth && isGet;
+            },
             handler: 'NetworkFirst',
             options: {
               cacheName: 'api-cache',
               networkTimeoutSeconds: 5,
               expiration: { maxEntries: 100, maxAgeSeconds: 24 * 3600 },
               cacheableResponse: {
-                statuses: [0, 200]
+                statuses: [200]
               }
             }
           }

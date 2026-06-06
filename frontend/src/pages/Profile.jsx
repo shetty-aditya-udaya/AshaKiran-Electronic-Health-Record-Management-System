@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useTranslation } from 'react-i18next';
-import { API_BASE_URL } from '../config';
+import { api } from '../utils/apiClient';
 
 // ─── completion calculator ────────────────────────────────────────────────────
 const TRACKED_FIELDS = [
@@ -128,32 +128,19 @@ export default function Profile({ onProfileUpdate }) {
     if (!form.name.trim()) { toast.error(t('profile.fullNameRequiredToast', 'Full name is required')); return; }
     setSaving(true);
     try {
-      const token = localStorage.getItem('token');
       const payload = { ...form, avatar };
 
-      const res = await fetch(`${API_BASE_URL}/api/profile`, {
-        method:  'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify(payload),
-      });
+      await api.put('/api/profile', payload);
 
-      // If backend doesn't have the endpoint yet, save locally anyway
+      // Save locally
       const updated = { ...storedUser, ...payload };
       localStorage.setItem('user', JSON.stringify(updated));
       onProfileUpdate?.(updated);
 
-      if (res.ok) {
-        toast.success(t('profile.saveSuccessToast', 'Profile saved successfully!'));
-      } else {
-        // graceful degradation — saved locally
-        toast.success(t('profile.saveLocalToast', 'Profile saved locally.'));
-      }
+      toast.success(t('profile.saveSuccessToast', 'Profile saved successfully!'));
       setEditMode(false);
-    } catch {
-      // network error — save locally
+    } catch (err) {
+      // network error or endpoint error — save locally (graceful degradation)
       const updated = { ...storedUser, ...form, avatar };
       localStorage.setItem('user', JSON.stringify(updated));
       onProfileUpdate?.(updated);

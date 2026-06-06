@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { X, Camera, Upload, Check, FileText, Activity, Pill, Syringe } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useTranslation } from 'react-i18next';
-import { API_BASE_URL } from '../config/api';
+import { api } from '../utils/apiClient';
 import { useConnection } from '../context/ConnectionContext';
 
 export default function AddReportModal({ isOpen, onClose, patientId, onSuccess }) {
@@ -32,18 +32,9 @@ export default function AddReportModal({ isOpen, onClose, patientId, onSuccess }
 
     const loadId = toast.loading(t('uploadingImage', "Uploading image..."));
     try {
-      const resp = await fetch(`${API_BASE_URL}/api/reports/upload`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${currentToken}` },
-        body
-      });
-      const data = await resp.json();
-      if (resp.ok) {
-        setFormData(prev => ({ ...prev, images: [...prev.images, data.url] }));
-        toast.success(t('imageAttached', "Image attached"), { id: loadId });
-      } else {
-        throw new Error(data.message);
-      }
+      const data = await api.post('/api/reports/upload', body);
+      setFormData(prev => ({ ...prev, images: [...prev.images, data.url] }));
+      toast.success(t('imageAttached', "Image attached"), { id: loadId });
     } catch (err) {
       toast.error(err.message, { id: loadId });
     }
@@ -74,18 +65,10 @@ export default function AddReportModal({ isOpen, onClose, patientId, onSuccess }
       // 2. Push to server if online
       if (isServerReachable) {
         try {
-          const token = localStorage.getItem('token');
-          const resp  = await fetch(`${API_BASE_URL}/api/reports/add`, {
-            method:  'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-            body:    JSON.stringify({ ...formData, patient_id: patientId, local_id }),
-          });
-          const data = await resp.json();
-          if (resp.ok) {
-            const { markReportItemSynced } = await import('../lib/db');
-            await markReportItemSynced(local_id, data.report_id);
-            synced = true;
-          }
+          const data = await api.post('/api/reports/add', { ...formData, patient_id: patientId, local_id });
+          const { markReportItemSynced } = await import('../lib/db');
+          await markReportItemSynced(local_id, data.report_id);
+          synced = true;
         } catch (err) {
           console.warn('[AddReportModal] Server push failed:', err);
         }

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useTranslation } from 'react-i18next';
-import { API_BASE_URL } from '../config/api';
+import { api } from '../utils/apiClient';
 
 export default function Signup() {
   const { t } = useTranslation();
@@ -15,22 +15,12 @@ export default function Signup() {
     setLoading(true);
     
     try {
-      const resp = await fetch(`${API_BASE_URL}/api/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
-      });
-      
-      const data = await resp.json();
-      
-      if (resp.ok) {
-        toast.success(t('signupSuccess'), { duration: 4000 });
-        setTimeout(() => navigate('/login'), 2000);
-      } else {
-        toast.error(t(data.error) || t('signupFailed', 'Signup failed'));
-      }
+      const data = await api.post('/api/register', formData);
+      toast.success(t('signupSuccess'), { duration: 4000 });
+      setTimeout(() => navigate('/login'), 2000);
     } catch (err) {
-      toast.error(t('networkError', 'Network error. Please check your connection.'));
+      const errorKey = err.data?.error || err.message;
+      toast.error(t(errorKey) || t('signupFailed', 'Signup failed'));
     } finally {
       setLoading(false);
     }

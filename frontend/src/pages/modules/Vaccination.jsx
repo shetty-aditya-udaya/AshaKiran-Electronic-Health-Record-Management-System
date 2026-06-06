@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ShieldCheck, Calendar, WifiOff, RefreshCw, Baby } from 'lucide-react';
-import { API_BASE_URL } from '../../config';
+import { api } from '../../utils/apiClient';
 
 // Determine vaccination card colour by risk_level / health_status
 function getStatusStyle(patient) {
@@ -39,15 +39,7 @@ export default function Vaccination({ t }) {
     setLoading(true);
     setError(null);
     try {
-      const token = localStorage.getItem('token');
-      const res = await fetch(`${API_BASE_URL}/api/programmes/vaccination`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || `Server returned ${res.status}`);
-      }
-      const data = await res.json();
+      const data = await api.get('/api/programmes/vaccination');
       setPatients(Array.isArray(data.patients) ? data.patients : []);
     } catch (err) {
       setError(err.message || 'Failed to load patients');

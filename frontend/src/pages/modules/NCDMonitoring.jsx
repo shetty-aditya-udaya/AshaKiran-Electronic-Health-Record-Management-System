@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Activity, Thermometer, User, WifiOff, RefreshCw, HeartPulse } from 'lucide-react';
-import { API_BASE_URL } from '../../config';
+import { api } from '../../utils/apiClient';
 
 function getRiskStyle(level) {
   switch ((level || '').toLowerCase()) {
@@ -30,15 +30,7 @@ export default function NCDMonitoring({ t }) {
     setLoading(true);
     setError(null);
     try {
-      const token = localStorage.getItem('token');
-      const res = await fetch(`${API_BASE_URL}/api/programmes/ncd`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || `Server returned ${res.status}`);
-      }
-      const data = await res.json();
+      const data = await api.get('/api/programmes/ncd');
       setPatients(Array.isArray(data.patients) ? data.patients : []);
     } catch (err) {
       setError(err.message || 'Failed to load patients');

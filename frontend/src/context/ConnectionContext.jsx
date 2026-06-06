@@ -43,73 +43,60 @@ export function ConnectionProvider({ children }) {
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
-    // 1. Device Offline State Detection
-    if (!navigator.onLine) {
-      failStreak.current = Math.max(failStreak.current + 1, FAIL_THRESHOLD);
-      if (lastStatus.current !== 'offline') {
-        lastStatus.current = 'offline';
-        statusRef.current  = 'offline';
-        setServerStatus('offline');
-        window.dispatchEvent(new CustomEvent('server-offline'));
+    // Retry loop for the active check
+    const maxAttempts = isInitialOrRetry ? 3 : 1;
+    let success = false;
+    let isOffline = false;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      if (controller.signal.aborted) break;
+
+      // 1. Check physical internet state first
+      if (!navigator.onLine) {
+        isOffline = true;
+        if (attempt < maxAttempts) {
+          await new Promise(r => setTimeout(r, 1000));
+          continue;
+        }
+        break;
       }
+
+      // 2. Perform silent backend health ping
+      try {
+        const ok = await checkHealth(3000, 1, controller.signal);
+        if (ok) {
+          success = true;
+          break;
+        }
+      } catch (err) {
+        // silent fail for this attempt
+      }
+
+      if (attempt < maxAttempts) {
+        // sleep before retry
+        await new Promise(r => setTimeout(r, 1000));
+      }
+    }
+
+    if (controller.signal.aborted) {
       isCheckingRef.current = false;
       return;
     }
 
-    // Failsafe auto-dismiss timer: if health check hangs, force offline/unreachable
-    const maxTimeout = isInitialOrRetry ? 10000 : 3500;
-    const failsafeTimer = setTimeout(() => {
-      if (lastStatus.current === 'checking' || statusRef.current === 'checking') {
-        if (import.meta.env.DEV) {
-          console.warn('[ConnectionContext] Failsafe timeout triggered.');
-        }
-        controller.abort();
-        const nextStatus = navigator.onLine ? 'unreachable' : 'offline';
-        if (lastStatus.current !== nextStatus) {
-          lastStatus.current = nextStatus;
-          statusRef.current  = nextStatus;
-          setServerStatus(nextStatus);
-          window.dispatchEvent(new CustomEvent('server-offline'));
-        }
+    if (success) {
+      failStreak.current = 0;
+      if (lastStatus.current !== 'online') {
+        lastStatus.current = 'online';
+        statusRef.current  = 'online';
+        setServerStatus('online');
+        window.dispatchEvent(new CustomEvent('server-online'));
       }
-    }, maxTimeout);
-
-    try {
-      // If checking or initial, do 3 silent attempts. Otherwise do 1 attempt.
-      const attempts = isInitialOrRetry ? 3 : 1;
-      const ok = await checkHealth(3000, attempts, controller.signal);
-
-      clearTimeout(failsafeTimer);
-
-      if (ok) {
-        failStreak.current = 0;
-        if (lastStatus.current !== 'online') {
-          lastStatus.current = 'online';
-          statusRef.current  = 'online';
-          setServerStatus('online');
-          window.dispatchEvent(new CustomEvent('server-online'));
-        }
-      } else {
-        failStreak.current += 1;
-        
-        const shouldMarkDown = isInitialOrRetry || failStreak.current >= FAIL_THRESHOLD;
-        if (shouldMarkDown) {
-          const nextStatus = navigator.onLine ? 'unreachable' : 'offline';
-          if (lastStatus.current !== nextStatus) {
-            lastStatus.current = nextStatus;
-            statusRef.current  = nextStatus;
-            setServerStatus(nextStatus);
-            window.dispatchEvent(new CustomEvent('server-offline'));
-          }
-        }
-      }
-    } catch (err) {
-      clearTimeout(failsafeTimer);
+    } else {
       failStreak.current += 1;
       
       const shouldMarkDown = isInitialOrRetry || failStreak.current >= FAIL_THRESHOLD;
       if (shouldMarkDown) {
-        const nextStatus = navigator.onLine ? 'unreachable' : 'offline';
+        const nextStatus = isOffline || !navigator.onLine ? 'offline' : 'unreachable';
         if (lastStatus.current !== nextStatus) {
           lastStatus.current = nextStatus;
           statusRef.current  = nextStatus;
@@ -117,12 +104,12 @@ export function ConnectionProvider({ children }) {
           window.dispatchEvent(new CustomEvent('server-offline'));
         }
       }
-    } finally {
-      if (abortControllerRef.current === controller) {
-        abortControllerRef.current = null;
-      }
-      isCheckingRef.current = false;
     }
+
+    if (abortControllerRef.current === controller) {
+      abortControllerRef.current = null;
+    }
+    isCheckingRef.current = false;
   }, []);
 
   const retryNow = useCallback(async () => {

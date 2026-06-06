@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Baby, AlertTriangle, Calendar, RefreshCw, WifiOff } from 'lucide-react';
-import { API_BASE_URL } from '../../config';
+import { api } from '../../utils/apiClient';
 
 export default function MaternalHealth({ t }) {
   const navigate = useNavigate();
@@ -14,16 +14,7 @@ export default function MaternalHealth({ t }) {
     setLoading(true);
     setError(null);
     try {
-      const token = localStorage.getItem('token');
-      const res = await fetch(`${API_BASE_URL}/api/programmes/maternal`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || `Server returned ${res.status}`);
-      }
-      const data = await res.json();
-      // API returns { patients: [...] }
+      const data = await api.get('/api/programmes/maternal');
       setPatients(Array.isArray(data.patients) ? data.patients : []);
     } catch (err) {
       setError(err.message || 'Failed to load patients');

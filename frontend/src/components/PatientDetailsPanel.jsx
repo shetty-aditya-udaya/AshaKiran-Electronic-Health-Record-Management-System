@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { API_BASE_URL } from '../config';
+import { api } from '../utils/apiClient';
 import { useConnection } from '../context/ConnectionContext';
 import AddVisitModal from './AddVisitModal';
 import { getVisitsForPatient, bulkUpsertVisits } from '../lib/db';
@@ -74,17 +74,11 @@ export default function PatientDetailsPanel({ patient, isOpen, onClose, onAddVis
     // 2. Fetch fresh online in background
     if (isServerReachable && patient.id) {
       try {
-        const token = localStorage.getItem('token');
-        const resp = await fetch(`${API_BASE_URL}/api/visits?patientId=${patient.id}`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (resp.ok) {
-          const data = await resp.json();
-          const serverVisits = data.visits || [];
-          if (serverVisits.length > 0) {
-            await bulkUpsertVisits(serverVisits);
-            await loadLocalVisits();
-          }
+        const data = await api.get(`/api/visits?patientId=${patient.id}`);
+        const serverVisits = data.visits || [];
+        if (serverVisits.length > 0) {
+          await bulkUpsertVisits(serverVisits);
+          await loadLocalVisits();
         }
       } catch (err) {
         console.warn('Failed to fetch visits from server:', err);

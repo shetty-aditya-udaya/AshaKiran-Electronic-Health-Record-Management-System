@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { API_BASE_URL } from '../config/api';
 import {
   ArrowLeft, Calendar, User, FileText,
   CheckCircle2, Clock, ChevronDown, ChevronUp,
@@ -268,12 +267,7 @@ export default function PatientReportFolder({ t: propT }) {
     if (!isServerReachable) { setLoading(false); return; }
     console.log('[PatientReportFolder DEBUG] fetchFromServer started.', { patientId: id });
     try {
-      const token = localStorage.getItem('token');
-      const resp  = await fetch(`${API_BASE_URL}/api/reports/patient/${id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!resp.ok) { setLoading(false); return; }
-      const res = await resp.json();
+      const res = await api.get(`/api/reports/patient/${id}`);
 
       console.log('[PatientReportFolder DEBUG] fetchFromServer success. Server API response retrieved.', {
         reportsCountOnServer: res.reports?.length || 0,

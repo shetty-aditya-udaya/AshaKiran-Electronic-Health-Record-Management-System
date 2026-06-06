@@ -4,7 +4,7 @@ import { X, Loader2, WifiOff } from 'lucide-react';
 import { SYNC } from '../lib/db';
 import { useConnection } from '../context/ConnectionContext';
 import { useTranslation } from 'react-i18next';
-import { API_BASE_URL } from '../config/api';
+import { api } from '../utils/apiClient';
 
 export default function AddPatient({ isOpen, onClose, onSuccess, onAddPatient }) {
   const { t } = useTranslation();
@@ -63,14 +63,7 @@ export default function AddPatient({ isOpen, onClose, onSuccess, onAddPatient })
         savedRecord = await onAddPatient(finalizedData);
       } else {
         // Fallback: direct API (legacy)
-        const token = localStorage.getItem('token');
-        const resp = await fetch(`${API_BASE_URL}/api/patients`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify(finalizedData),
-        });
-        const data = await resp.json();
-        if (!resp.ok) throw new Error(data.error || t('failedToSave', 'Failed to save'));
+        const data = await api.post('/api/patients', finalizedData);
         savedRecord = data.patient;
       }
 

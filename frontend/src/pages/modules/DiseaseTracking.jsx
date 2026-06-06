@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Bug, WifiOff, RefreshCw, Stethoscope } from 'lucide-react';
-import { API_BASE_URL } from '../../config';
+import { api } from '../../utils/apiClient';
 
 const KNOWN_DISEASES = ['TB', 'Malaria', 'Dengue', 'Typhoid', 'Cholera'];
 
@@ -25,15 +25,7 @@ export default function DiseaseTracking({ t }) {
     setLoading(true);
     setError(null);
     try {
-      const token = localStorage.getItem('token');
-      const res = await fetch(`${API_BASE_URL}/api/programmes/disease`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || `Server returned ${res.status}`);
-      }
-      const data = await res.json();
+      const data = await api.get('/api/programmes/disease');
       setPatients(Array.isArray(data.patients) ? data.patients : []);
     } catch (err) {
       setError(err.message || 'Failed to load patients');
