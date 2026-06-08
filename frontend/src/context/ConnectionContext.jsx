@@ -10,7 +10,7 @@
  *     can react without React coupling.
  */
 import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
-import { checkHealth } from '../utils/apiClient';
+import { checkHealth, checkInternet, onAppReady } from '../utils/apiClient';
 
 const POLL_INTERVAL_MS = 15_000;
 const FAIL_THRESHOLD   = 2;   // consecutive failures before marking offline
@@ -52,7 +52,8 @@ export function ConnectionProvider({ children }) {
       if (controller.signal.aborted) break;
 
       // 1. Check physical internet state first
-      if (!navigator.onLine) {
+      const online = await checkInternet();
+      if (!online) {
         isOffline = true;
         if (attempt < maxAttempts) {
           await new Promise(r => setTimeout(r, 1000));
@@ -96,7 +97,7 @@ export function ConnectionProvider({ children }) {
       
       const shouldMarkDown = isInitialOrRetry || failStreak.current >= FAIL_THRESHOLD;
       if (shouldMarkDown) {
-        const nextStatus = isOffline || !navigator.onLine ? 'offline' : 'unreachable';
+        const nextStatus = isOffline ? 'offline' : 'unreachable';
         if (lastStatus.current !== nextStatus) {
           lastStatus.current = nextStatus;
           statusRef.current  = nextStatus;
@@ -120,10 +121,14 @@ export function ConnectionProvider({ children }) {
   }, [check]);
 
   useEffect(() => {
-    // Initial check
-    check(true);
+    let active = true;
 
-    pollRef.current = setInterval(() => check(), POLL_INTERVAL_MS);
+    // Initial check deferred until app is fully ready
+    onAppReady().then(() => {
+      if (!active) return;
+      check(true);
+      pollRef.current = setInterval(() => check(), POLL_INTERVAL_MS);
+    });
 
     const onVisible = () => { if (document.visibilityState === 'visible') check(); };
     document.addEventListener('visibilitychange', onVisible);
@@ -149,30 +154,27 @@ export function ConnectionProvider({ children }) {
       }
     };
 
+    let apiFailureDebounce = null;
     const handleApiFailure = () => {
-      failStreak.current += 1;
-      if (failStreak.current >= FAIL_THRESHOLD) {
-        const nextStatus = navigator.onLine ? 'unreachable' : 'offline';
-        if (lastStatus.current !== nextStatus) {
-          lastStatus.current = nextStatus;
-          statusRef.current  = nextStatus;
-          setServerStatus(nextStatus);
-          window.dispatchEvent(new CustomEvent('server-offline'));
-        }
-      }
+      if (apiFailureDebounce) clearTimeout(apiFailureDebounce);
+      apiFailureDebounce = setTimeout(() => {
+        check();
+      }, 1000); // Debounce transient connection checks
     };
 
     window.addEventListener('api-call-success', handleApiSuccess);
     window.addEventListener('api-call-failure', handleApiFailure);
 
     return () => {
-      clearInterval(pollRef.current);
+      active = false;
+      if (pollRef.current) clearInterval(pollRef.current);
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('online', handleNetworkChange);
       window.removeEventListener('offline', handleNetworkChange);
       window.removeEventListener('api-call-success', handleApiSuccess);
       window.removeEventListener('api-call-failure', handleApiFailure);
       if (networkTimer) clearTimeout(networkTimer);
+      if (apiFailureDebounce) clearTimeout(apiFailureDebounce);
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }

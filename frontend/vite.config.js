@@ -24,16 +24,16 @@ export default defineConfig({
         skipWaiting: true,
         clientsClaim: true,
         cleanupOutdatedCaches: true,
-        cacheId: 'ashakiran-pwa-v1.1',
+        cacheId: 'ashakiran-pwa-v1.2',
         globPatterns: ['**/*.{js,css,html,ico,png,jpg,jpeg,svg,webmanifest}'],
         runtimeCaching: [
           {
-            urlPattern: ({ url, request }) => {
+            urlPattern: ({ url }) => {
               const isApi = url.pathname.startsWith('/api/') || url.href.includes('/api/');
               const isAuth = url.pathname.includes('/login') || url.pathname.includes('/refresh') || url.pathname.includes('/register');
-              const isGet = request ? request.method === 'GET' : true;
-              return isApi && !isAuth && isGet;
+              return isApi && !isAuth;
             },
+            method: 'GET',
             handler: 'NetworkFirst',
             options: {
               cacheName: 'api-cache',

@@ -57,6 +57,23 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+export async function checkInternet() {
+  if (typeof window === 'undefined') return true;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 3000);
+    await fetch(`/favicon.ico?_cb=${Date.now()}`, {
+      method: 'HEAD',
+      signal: controller.signal,
+      cache: 'no-store',
+    });
+    clearTimeout(timer);
+    return true;
+  } catch (err) {
+    return typeof navigator !== 'undefined' ? navigator.onLine !== false : true;
+  }
+}
+
 function getToken() {
   return localStorage.getItem('token');
 }
@@ -74,10 +91,6 @@ function buildHeaders(extra = {}, isFormData = false) {
 // ── Core fetch with timeout ───────────────────────────────────────────────────
 
 async function fetchWithTimeout(url, options = {}) {
-  if (!navigator.onLine) {
-    throw new OfflineError();
-  }
-
   const controller = new AbortController();
   const signal = controller.signal;
   if (options.signal) {
@@ -92,7 +105,7 @@ async function fetchWithTimeout(url, options = {}) {
     if (err.name === 'AbortError') {
       throw new TimeoutError();
     }
-    if (!navigator.onLine) {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
       throw new OfflineError();
     }
     throw new BackendUnreachableError(err.message);
@@ -220,13 +233,20 @@ async function request(method, path, { body, headers: extra = {}, raw = false } 
     }
   } catch (err) {
     // 1. Temporary production debugging / telemetry logs
+    let cacheKeys = [];
+    if (typeof caches !== 'undefined') {
+      try {
+        cacheKeys = await caches.keys();
+      } catch {}
+    }
     console.error(`[API Debug] Request failed: ${method} ${path}`, {
       attemptedUrl: url,
-      navigatorOnline: navigator.onLine,
+      navigatorOnline: typeof navigator !== 'undefined' ? navigator.onLine : undefined,
       errorName: err.name,
       errorMessage: err.message,
       errorStatus: err.status,
-      swState: navigator.serviceWorker ? (navigator.serviceWorker.controller ? 'controlled' : 'active-no-controller') : 'unsupported',
+      swState: typeof navigator !== 'undefined' && navigator.serviceWorker ? (navigator.serviceWorker.controller ? 'controlled' : 'active-no-controller') : 'unsupported',
+      activeCaches: cacheKeys,
       networkMode: import.meta.env.MODE,
     });
 
@@ -356,5 +376,44 @@ export async function checkHealth(timeoutMs = 3000, attempts = 1, externalSignal
     }
   }
   return false;
+}
+
+export function onAppReady() {
+  if (typeof window === 'undefined') return Promise.resolve();
+
+  return new Promise((resolve) => {
+    let resolved = false;
+    const done = () => {
+      if (resolved) return;
+      resolved = true;
+      resolve();
+    };
+
+    // Timeout safety fallback of 2 seconds
+    const timeoutId = setTimeout(done, 2000);
+
+    const start = () => {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.ready
+          .then(() => {
+            clearTimeout(timeoutId);
+            done();
+          })
+          .catch(() => {
+            clearTimeout(timeoutId);
+            done();
+          });
+      } else {
+        clearTimeout(timeoutId);
+        done();
+      }
+    };
+
+    if (document.readyState === 'complete') {
+      start();
+    } else {
+      window.addEventListener('load', start);
+    }
+  });
 }
 

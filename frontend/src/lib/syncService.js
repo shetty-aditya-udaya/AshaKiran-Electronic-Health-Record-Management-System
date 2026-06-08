@@ -34,7 +34,7 @@ import {
   getPendingCount, getFullDiagnostics,
   clearAllLocalData,
 } from './db';
-import { api, NetworkError, checkHealth, ApiError } from '../utils/apiClient';
+import { api, NetworkError, checkHealth, ApiError, onAppReady } from '../utils/apiClient';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const MAX_ITEM_RETRIES  = 5;
@@ -960,8 +960,10 @@ export function initAutoSync() {
   window.addEventListener('visit-added',   _visitAddedHandler);
   window.addEventListener('patient-added', _patientAddedHandler);
 
-  // Initial sync on load
-  syncAll();
+  // Initial sync on load deferred until app is fully ready (SW ready + DOM loaded)
+  onAppReady().then(() => {
+    syncAll();
+  });
 }
 
 // ── Reset (called on logout) ──────────────────────────────────────────────────

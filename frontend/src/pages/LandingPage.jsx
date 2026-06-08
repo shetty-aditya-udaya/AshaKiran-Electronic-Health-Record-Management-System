@@ -1,19 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { 
-  Instagram, 
-  Github, 
-  Play, 
-  ArrowRight, 
-  Activity, 
-  Heart, 
-  ShieldAlert, 
-  Award, 
-  Users, 
-  CheckCircle2, 
-  Star, 
-  Plus, 
-  Minus, 
+import {
+  Instagram,
+  Github,
+  Play,
+  ArrowRight,
+  Activity,
+  Heart,
+  ShieldAlert,
+  Award,
+  Users,
+  CheckCircle2,
+  Star,
+  Plus,
+  Minus,
   Database,
   Volume2,
   FileText,
@@ -32,7 +32,7 @@ import { useTranslation } from 'react-i18next';
 export default function LandingPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  
+
   // Carousel Slider indices
   const [carouselIndex, setCarouselIndex] = useState(0);
   // FAQ Active indices
@@ -44,7 +44,7 @@ export default function LandingPage() {
   const autoPlayRef = useRef(null);
 
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
-  
+
   useEffect(() => {
     const handleResize = () => setWindowWidth(window.innerWidth);
     window.addEventListener('resize', handleResize);
@@ -85,7 +85,7 @@ export default function LandingPage() {
   const handleDragEnd = () => {
     if (!dragStartX.current) return;
     setIsDraggingState(false);
-    
+
     const isMobile = windowWidth < 768;
     const spacing = isMobile ? 180 : windowWidth < 1024 ? 250 : 310;
     const threshold = spacing * 0.25;
@@ -97,7 +97,7 @@ export default function LandingPage() {
     } else {
       startAutoPlay();
     }
-    
+
     setDragOffset(0);
     dragStartX.current = 0;
   };
@@ -274,7 +274,7 @@ export default function LandingPage() {
   useEffect(() => {
     startAutoPlay();
     return () => stopAutoPlay();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function prevCard() { setSpotlightIdx(p => (p - 1 + NUM) % NUM); startAutoPlay(); }
@@ -337,16 +337,16 @@ export default function LandingPage() {
 
   return (
     <div className="bg-[#F8FAFC] text-slate-800 dark:bg-slate-950 dark:text-slate-100 font-body selection:bg-teal-100 selection:text-teal-900 min-h-screen transition-colors duration-300">
-      
+
       <main className="pb-24">
         {/* ==========================================
             SECTION 1: HERO FOLD (EXACT PRESERVATION)
             ========================================== */}
         <section className="relative min-h-[85vh] flex items-center overflow-hidden">
           <div className="absolute inset-0 z-0">
-            <img 
-              alt="Health Worker in Rural Setting" 
-              className="w-full h-full object-cover object-[center_20%]" 
+            <img
+              alt="Health Worker in Rural Setting"
+              className="w-full h-full object-cover object-[center_20%]"
               src="https://lh3.googleusercontent.com/aida-public/AB6AXuARd5qvRGZiqcuMXt2CcKn_Gj0JDuX07l6eNEhkggVXqGEtiWEKxq92WVbXDx0HlK2VrTwK9NwoLyoI3KcFfgnKRaATGZzTnevdJiYteGRN-652naHvywqwLVuUcK8GKMBRjihGxLt2cO7Z3htS3QssGgHfD7RbDTonVuU4NGr_TH8GnuBLqy1gyC1dLCGpC_lQycRe4czjiPDs-XY57D-Vtqu8J5wx0KZZ_KthWPdQlDu4LqqWMUxSo3QW1Z0CAfC6fmk4kcgUaPfb"
             />
             <div className="absolute inset-0 bg-black/40"></div>
@@ -360,15 +360,15 @@ export default function LandingPage() {
                 {t('heroSub', 'Providing the tools and training to bring quality healthcare to every doorstep in rural communities. Together, we heal and grow.')}
               </p>
               <div className="flex flex-wrap gap-4">
-                <button 
+                <button
                   onClick={handleGetStarted}
                   className="bg-[#0F766E] text-white px-8 py-4 rounded-full font-headline font-bold text-lg hover:bg-teal-800 active:scale-95 transition-all shadow-lg flex items-center gap-2"
                 >
                   {t('getStarted')}
                   <ArrowRight className="w-5 h-5" />
                 </button>
-                <button 
-                  onClick={() => navigate('/stories')} 
+                <button
+                  onClick={() => navigate('/stories')}
                   className="bg-white/20 backdrop-blur-md border border-white/30 text-white px-8 py-4 rounded-full font-headline font-bold text-lg hover:bg-white/30 transition-all flex items-center gap-2"
                 >
                   {t('watchStory')}
@@ -446,8 +446,8 @@ export default function LandingPage() {
 
             <div
               className="relative flex items-end justify-center w-full select-none"
-              style={{ 
-                minHeight: windowWidth < 768 ? '440px' : '480px', 
+              style={{
+                minHeight: windowWidth < 768 ? '440px' : '480px',
                 overflow: 'visible',
                 touchAction: 'pan-y'
               }}
@@ -471,7 +471,7 @@ export default function LandingPage() {
               {/* Card track (Absolute-positioned viewport wrapper) */}
               <div
                 className="carousel-spotlight-track relative w-full h-full"
-                style={{ 
+                style={{
                   overflow: 'visible',
                   minHeight: windowWidth < 768 ? '400px' : '430px',
                   cursor: isDraggingState ? 'grabbing' : 'grab',
@@ -536,7 +536,7 @@ export default function LandingPage() {
                   const isJpg = !!card.isPhoto;
                   const bubbleSizeActive = isJpg ? 140 : 120;
                   const bubbleTopActive = 68 - bubbleSizeActive / 2;
-                  
+
                   const bubbleSizeInactive = isJpg ? 105 : 90;
                   const bubbleTopInactive = 68 - bubbleSizeInactive / 2;
 
@@ -561,7 +561,7 @@ export default function LandingPage() {
                         transform: `translateX(-50%) translateX(${translationX}px) scale(${scale})`,
                         transformOrigin: 'bottom center',
                         filter: blurPx > 0 ? `blur(${blurPx}px) ${filter}` : filter,
-                        transition: isDraggingState 
+                        transition: isDraggingState
                           ? 'transform 0.05s cubic-bezier(0.1, 0.8, 0.2, 1), opacity 0.15s ease-out'
                           : 'transform 0.7s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.7s ease, filter 0.7s ease, z-index 0.7s ease',
                         pointerEvents: isVisible ? 'auto' : 'none',
@@ -591,19 +591,19 @@ export default function LandingPage() {
                         <div
                           className="relative flex items-center justify-center rounded-full overflow-hidden transition-all duration-700 ease-out group-hover:scale-105 group-hover:rotate-1"
                           style={{
-                            width:  `${isActive ? bubbleSizeActive : bubbleSizeInactive}px`,
+                            width: `${isActive ? bubbleSizeActive : bubbleSizeInactive}px`,
                             height: `${isActive ? bubbleSizeActive : bubbleSizeInactive}px`,
                             background: 'rgba(255,255,255,0.98)',
-                            border: isActive 
+                            border: isActive
                               ? (isJpg ? '4px solid rgba(255,255,255,1)' : '3px solid rgba(255,255,255,1)')
                               : (isJpg ? '3px solid rgba(255,255,255,1)' : '2px solid rgba(255,255,255,1)'),
-                            boxShadow: isActive 
-                              ? (isJpg 
-                                  ? '0 12px 32px rgba(13,110,110,0.18), 0 4px 12px rgba(0,0,0,0.08)' 
-                                  : '0 8px 24px rgba(13,110,110,0.08), 0 2px 8px rgba(0,0,0,0.06)')
-                              : (isJpg 
-                                  ? '0 10px 24px rgba(13,110,110,0.12), 0 3px 8px rgba(0,0,0,0.05)' 
-                                  : '0 6px 16px rgba(0,0,0,0.04), 0 2px 6px rgba(0,0,0,0.03)'),
+                            boxShadow: isActive
+                              ? (isJpg
+                                ? '0 12px 32px rgba(13,110,110,0.18), 0 4px 12px rgba(0,0,0,0.08)'
+                                : '0 8px 24px rgba(13,110,110,0.08), 0 2px 8px rgba(0,0,0,0.06)')
+                              : (isJpg
+                                ? '0 10px 24px rgba(13,110,110,0.12), 0 3px 8px rgba(0,0,0,0.05)'
+                                : '0 6px 16px rgba(0,0,0,0.04), 0 2px 6px rgba(0,0,0,0.03)'),
                           }}
                         >
                           {/* Inner shimmer */}
@@ -614,8 +614,8 @@ export default function LandingPage() {
                           <img
                             src={card.illustration}
                             alt={card.title}
-                            className={isJpg 
-                              ? "w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-110" 
+                            className={isJpg
+                              ? "w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-110"
                               : "w-[86%] h-[86%] object-contain"
                             }
                             draggable="false"
@@ -630,12 +630,12 @@ export default function LandingPage() {
                         style={{
                           background: isActive ? card.gradient : 'rgba(255,255,255,0.92)',
                           border: isActive ? 'none' : '1px solid rgba(255,255,255,0.95)',
-                          boxShadow: isActive 
-                            ? 'none' 
+                          boxShadow: isActive
+                            ? 'none'
                             : '0 12px 32px rgba(0,0,0,0.05), 0 2px 8px rgba(0,0,0,0.03)',
                           minHeight: isMobile ? '365px' : '395px',
-                          padding: isActive 
-                            ? (isJpg ? '98px 28px 36px' : '92px 28px 36px') 
+                          padding: isActive
+                            ? (isJpg ? '98px 28px 36px' : '92px 28px 36px')
                             : (isJpg ? '82px 22px 28px' : '76px 22px 28px'),
                           transition: 'background 0.7s, border 0.7s, padding 0.7s, box-shadow 0.7s',
                         }}
@@ -643,9 +643,9 @@ export default function LandingPage() {
                         {/* Top accent strip (only visible when inactive) */}
                         <div
                           className="absolute top-0 left-0 right-0 h-1.5 rounded-t-[36px] transition-opacity duration-700"
-                          style={{ 
+                          style={{
                             background: card.gradient,
-                            opacity: isActive ? 0 : 1 
+                            opacity: isActive ? 0 : 1
                           }}
                         />
 
@@ -665,17 +665,17 @@ export default function LandingPage() {
                           {/* Tag pill */}
                           <span
                             className="px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-widest mb-3 select-none transition-all duration-700"
-                            style={{ 
-                              background: isActive ? 'rgba(255,255,255,0.16)' : 'transparent', 
-                              color: isActive ? card.accentColor : card.glowColor.replace('0.55','1'), 
-                              border: isActive ? '1px solid rgba(255,255,255,0.20)' : '1px solid transparent' 
+                            style={{
+                              background: isActive ? 'rgba(255,255,255,0.16)' : 'transparent',
+                              color: isActive ? card.accentColor : card.glowColor.replace('0.55', '1'),
+                              border: isActive ? '1px solid rgba(255,255,255,0.20)' : '1px solid transparent'
                             }}
                           >
                             {card.tag}
                           </span>
 
                           {/* Title */}
-                          <h3 
+                          <h3
                             className="text-lg font-extrabold font-headline leading-snug select-none transition-colors duration-700"
                             style={{ color: isActive ? '#ffffff' : '#1e293b' }}
                           >
@@ -683,13 +683,13 @@ export default function LandingPage() {
                           </h3>
 
                           {/* Accent divider line */}
-                          <div 
-                            className="w-10 h-[1.5px] rounded-full my-3 transition-colors duration-700" 
-                            style={{ background: isActive ? card.accentColor : '#e2e8f0' }} 
+                          <div
+                            className="w-10 h-[1.5px] rounded-full my-3 transition-colors duration-700"
+                            style={{ background: isActive ? card.accentColor : '#e2e8f0' }}
                           />
 
                           {/* Description */}
-                          <p 
+                          <p
                             className="text-xs leading-relaxed font-light line-clamp-3 select-none transition-colors duration-700"
                             style={{ color: isActive ? 'rgba(255,255,255,0.85)' : '#64748b' }}
                           >
@@ -700,8 +700,8 @@ export default function LandingPage() {
                         {/* CTA */}
                         <span
                           className="inline-flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest mt-4 select-none transition-all duration-700"
-                          style={{ 
-                            color: isActive ? card.accentColor : card.glowColor.replace('0.55','1'),
+                          style={{
+                            color: isActive ? card.accentColor : card.glowColor.replace('0.55', '1'),
                             opacity: isActive ? 1 : 0,
                             transform: isActive ? 'translateY(0)' : 'translateY(10px)',
                           }}
@@ -733,10 +733,10 @@ export default function LandingPage() {
                   onClick={() => { setSpotlightIdx(i); startAutoPlay(); }}
                   aria-label={`Go to card ${i + 1}`}
                   style={{
-                    width:        spotlightIdx === i ? '28px' : '7px',
-                    height:       '7px',
+                    width: spotlightIdx === i ? '28px' : '7px',
+                    height: '7px',
                     borderRadius: '999px',
-                    background:   spotlightIdx === i
+                    background: spotlightIdx === i
                       ? carouselCards[spotlightIdx].glowColor.replace('0.55', '1')
                       : 'rgba(0,0,0,0.15)',
                     transition: 'all 0.38s cubic-bezier(0.34, 1.56, 0.64, 1)',
@@ -751,13 +751,13 @@ export default function LandingPage() {
         </section>
 
 
-        <section 
+        <section
           style={{ background: 'linear-gradient(160deg, #F2F9FF 0%, #EAF6FF 100%)' }}
           className="py-24 px-6 border-b border-[#E0ECFC] dark:border-slate-900 transition-colors dark:!bg-none dark:bg-slate-950/20"
         >
           <div className="max-w-7xl mx-auto">
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-16 items-center">
-              
+
               {/* Left Column */}
               <div className="lg:col-span-4 space-y-6 lg:sticky lg:top-24">
                 <h2 className="text-3xl md:text-4xl lg:text-5xl font-headline font-extrabold text-slate-900 dark:text-white leading-tight tracking-tight">
@@ -794,22 +794,22 @@ export default function LandingPage() {
                 ].map((block, i) => {
                   // Determine diagonal card color synchronization
                   const isColorA = i === 0 || i === 3;
-                  const bgClass  = isColorA 
-                    ? "bg-[#F6F1FF] dark:bg-indigo-950/20 border-[#EBE0FF]/70 dark:border-indigo-900/40" 
+                  const bgClass = isColorA
+                    ? "bg-[#F6F1FF] dark:bg-indigo-950/20 border-[#EBE0FF]/70 dark:border-indigo-900/40"
                     : "bg-[#FAF8F5] dark:bg-slate-950/40 border-[#EFEBE4]/60 dark:border-slate-900/60";
 
                   // Asymmetrical borders: highly round only the outer grid corners
-                  const roundClass = i === 0 
-                    ? "rounded-tl-[44px] rounded-tr-[16px] rounded-bl-[16px] rounded-br-[16px]" 
-                    : i === 1 
-                    ? "rounded-tr-[44px] rounded-tl-[16px] rounded-bl-[16px] rounded-br-[16px]" 
-                    : i === 2 
-                    ? "rounded-bl-[44px] rounded-tl-[16px] rounded-tr-[16px] rounded-br-[16px]" 
-                    : "rounded-br-[44px] rounded-tl-[16px] rounded-tr-[16px] rounded-bl-[16px]";
+                  const roundClass = i === 0
+                    ? "rounded-tl-[44px] rounded-tr-[16px] rounded-bl-[16px] rounded-br-[16px]"
+                    : i === 1
+                      ? "rounded-tr-[44px] rounded-tl-[16px] rounded-bl-[16px] rounded-br-[16px]"
+                      : i === 2
+                        ? "rounded-bl-[44px] rounded-tl-[16px] rounded-tr-[16px] rounded-br-[16px]"
+                        : "rounded-br-[44px] rounded-tl-[16px] rounded-tr-[16px] rounded-bl-[16px]";
 
                   return (
-                    <div 
-                      key={i} 
+                    <div
+                      key={i}
                       className={`group relative p-10 md:p-12 border flex flex-col justify-between gap-6 transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] hover:scale-[1.03] hover:shadow-2xl hover:shadow-teal-900/5 hover:z-20 hover:border-slate-300/60 ${bgClass} ${roundClass}`}
                       style={{ minHeight: '270px' }}
                     >
@@ -836,7 +836,7 @@ export default function LandingPage() {
         {/* ==========================================
             SECTION 6: FIELD TESTIMONIALS CAROUSEL
             ========================================== */}
-        <section 
+        <section
           style={{ background: 'linear-gradient(160deg, #FFF9E8 0%, #FFF5D0 100%)' }}
           className="py-24 px-6 border-b border-[#FCEEC8] dark:border-slate-900 transition-colors dark:!bg-none dark:bg-slate-950/20"
         >
@@ -850,12 +850,12 @@ export default function LandingPage() {
                 {t('testimonialHeaderSub', 'Delivering the same high level of health service from district hospitals to remote doorsteps.')}
               </p>
             </div>
- 
+
             {/* Testimonial Box */}
             <div className="relative bg-white dark:bg-slate-900 border border-white/60 dark:border-slate-800/80 rounded-3xl p-8 md:p-12 shadow-xl shadow-amber-900/5 overflow-hidden">
               {/* Subtle warm glow inside card */}
-              <div 
-                className="absolute -top-32 -left-32 w-[320px] h-[320px] rounded-full pointer-events-none" 
+              <div
+                className="absolute -top-32 -left-32 w-[320px] h-[320px] rounded-full pointer-events-none"
                 style={{ background: 'radial-gradient(circle, rgba(245,158,11,0.04) 0%, transparent 70%)' }}
               />
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
@@ -867,19 +867,19 @@ export default function LandingPage() {
                   </p>
                   <span className="text-6xl font-headline text-[#0F766E]/20 block text-right h-4 select-none">”</span>
                 </div>
- 
+
                 {/* Right Column: Profile details */}
                 <div className="lg:col-span-5 bg-white dark:bg-slate-900 p-8 rounded-2xl border border-slate-200/50 dark:border-slate-800/80 shadow-sm flex flex-col justify-between items-center text-center">
                   <div className="w-20 h-20 rounded-full overflow-hidden shadow-inner mb-4 border-2 border-teal-50">
-                    <img 
-                      src="/sujata.jpg" 
-                      alt={t('sujataName', 'Sujata')} 
-                      className="w-full h-full object-cover" 
+                    <img
+                      src="/sujata.jpg"
+                      alt={t('sujataName', 'Sujata')}
+                      className="w-full h-full object-cover"
                     />
                   </div>
                   <h4 className="text-lg font-bold text-slate-900 dark:text-white">{t('sujataName', 'Sujata')}</h4>
                   <p className="text-sm text-[#0F766E] font-medium mb-4">{t('sujataRole', 'ASHA Worker, Bengaluru Rural District')}</p>
-                  
+
                   {/* Rating Graphic */}
                   <div className="flex gap-1 justify-center text-amber-500">
                     {[...Array(5)].map((_, idx) => (
@@ -889,17 +889,17 @@ export default function LandingPage() {
                 </div>
               </div>
             </div>
- 
+
           </div>
         </section>
 
-        <section 
+        <section
           style={{ background: 'linear-gradient(160deg, #FFF4F7 0%, #FFEFF4 100%)' }}
           className="py-24 px-6 border-b border-[#FCE2EB] dark:border-slate-900 transition-colors dark:!bg-none dark:bg-slate-950/20"
         >
           <div className="max-w-7xl mx-auto">
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-16 items-start">
-              
+
               {/* Left Column: Headline */}
               <div className="lg:col-span-5 space-y-6 lg:sticky lg:top-24">
                 <span className="inline-block px-3 py-1.5 rounded-full bg-teal-50 dark:bg-teal-950/40 text-[#0F766E] text-xs font-bold uppercase tracking-wider">
@@ -924,7 +924,7 @@ export default function LandingPage() {
                 {faqs.map((faq, index) => {
                   const isOpen = faqOpenIndex === index;
                   return (
-                    <div 
+                    <div
                       key={index}
                       className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/80 rounded-2xl overflow-hidden transition-all duration-300 shadow-sm"
                     >
@@ -939,10 +939,9 @@ export default function LandingPage() {
                           {isOpen ? <Minus className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
                         </div>
                       </button>
-                      <div 
-                        className={`transition-all duration-300 overflow-hidden ${
-                          isOpen ? 'max-h-60 border-t border-slate-100 dark:border-slate-800/80' : 'max-h-0'
-                        }`}
+                      <div
+                        className={`transition-all duration-300 overflow-hidden ${isOpen ? 'max-h-60 border-t border-slate-100 dark:border-slate-800/80' : 'max-h-0'
+                          }`}
                       >
                         <p className="p-6 text-sm text-slate-500 dark:text-slate-400 font-light leading-relaxed">
                           {faq.answer}
@@ -979,8 +978,8 @@ export default function LandingPage() {
           ========================================== */}
       <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200/80 dark:border-slate-800/80 shadow-[0_-8px_30px_rgb(0,0,0,0.06)] px-4 py-3 md:py-4 transition-colors">
         <div className="max-w-4xl mx-auto flex justify-around items-center">
-          
-          <button 
+
+          <button
             onClick={() => navigate('/dashboard')}
             className="flex flex-col items-center gap-1 text-slate-500 hover:text-[#0F766E] dark:text-slate-400 dark:hover:text-teal-400 transition-colors"
           >
@@ -988,7 +987,7 @@ export default function LandingPage() {
             <span className="text-[10px] font-bold tracking-wider uppercase font-headline">{t('dashboard', 'Dashboard')}</span>
           </button>
 
-          <button 
+          <button
             onClick={() => navigate('/patients')}
             className="flex flex-col items-center gap-1 text-slate-500 hover:text-[#0F766E] dark:text-slate-400 dark:hover:text-teal-400 transition-colors"
           >
@@ -996,7 +995,7 @@ export default function LandingPage() {
             <span className="text-[10px] font-bold tracking-wider uppercase font-headline">{t('patients', 'Patients')}</span>
           </button>
 
-          <button 
+          <button
             onClick={() => navigate('/reports')}
             className="flex flex-col items-center gap-1 text-slate-500 hover:text-[#0F766E] dark:text-slate-400 dark:hover:text-teal-400 transition-colors"
           >
@@ -1004,7 +1003,7 @@ export default function LandingPage() {
             <span className="text-[10px] font-bold tracking-wider uppercase font-headline">{t('reports', 'Reports')}</span>
           </button>
 
-          <button 
+          <button
             onClick={() => navigate('/reminders')}
             className="flex flex-col items-center gap-1 text-slate-500 hover:text-[#0F766E] dark:text-slate-400 dark:hover:text-teal-400 transition-colors"
           >
