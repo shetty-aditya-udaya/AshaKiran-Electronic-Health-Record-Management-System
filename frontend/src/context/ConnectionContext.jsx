@@ -23,100 +23,143 @@ const ConnectionContext = createContext({
 
 export function ConnectionProvider({ children }) {
   const [serverStatus, setServerStatus] = useState('checking');
-  const failStreak = useRef(0);
   const pollRef    = useRef(null);
+
+  // Stabilization and Anti-Blinking State
   const lastStatus = useRef('checking');
-  const statusRef  = useRef('checking'); // mirrors state without triggering re-render
+  const statusRef  = useRef('checking'); // mirrors serverStatus without re-rendering
+  const lastStatusChangeTime = useRef(Date.now());
+  const consecutiveFailures = useRef(0);
+  const verificationTimer = useRef(null);
   const isCheckingRef = useRef(false);
   const abortControllerRef = useRef(null);
 
-  const check = useCallback(async (isInitialOrRetry = false) => {
+  const MIN_STATE_DURATION_MS = 5000; // 5 seconds minimum in any status to prevent UI blinking
+
+  const transitionTo = useCallback((nextStatus) => {
+    if (nextStatus === lastStatus.current) return;
+
+    const now = Date.now();
+    const duration = now - lastStatusChangeTime.current;
+
+    // Enforce minimum state duration, unless transitioning from initial 'checking' status
+    if (lastStatus.current !== 'checking' && duration < MIN_STATE_DURATION_MS) {
+      console.warn(`[Connection] Status transition blocked to prevent blinking: ${lastStatus.current} -> ${nextStatus} (${duration}ms < ${MIN_STATE_DURATION_MS}ms)`);
+      return;
+    }
+
+    console.log(`[Connection] Status changed: ${lastStatus.current} -> ${nextStatus} (persisted ${duration}ms)`);
+    lastStatus.current = nextStatus;
+    statusRef.current  = nextStatus;
+    setServerStatus(nextStatus);
+    lastStatusChangeTime.current = now;
+
+    if (nextStatus === 'online') {
+      window.dispatchEvent(new CustomEvent('server-online'));
+    } else if (nextStatus === 'offline' || nextStatus === 'unreachable') {
+      window.dispatchEvent(new CustomEvent('server-offline'));
+    }
+  }, []);
+
+  const runVerificationLoop = useCallback((signal) => {
+    let attempts = 0;
+    const maxAttempts = 3; // Ping every 3 seconds, up to 3 times (approx 9-10s verification window)
+
+    const runPing = async () => {
+      if (consecutiveFailures.current === 0 || signal.aborted) return;
+      attempts += 1;
+
+      console.log(`[Connection Debug] Verification ping ${attempts}/${maxAttempts} running...`);
+      try {
+        const ok = await checkHealth(3000, 1, signal);
+        if (ok) {
+          console.log(`[Connection Debug] Verification ping succeeded. Restoring status to online.`);
+          consecutiveFailures.current = 0;
+          transitionTo('online');
+          return;
+        }
+      } catch (err) {
+        console.warn(`[Connection Debug] Verification ping ${attempts} failed:`, err.message);
+      }
+
+      if (attempts < maxAttempts) {
+        verificationTimer.current = setTimeout(runPing, 3000);
+      } else {
+        console.warn(`[Connection Debug] All ${maxAttempts} verification attempts failed. Confirming server unreachable.`);
+        const hasInternet = await checkInternet();
+        const nextStatus = hasInternet ? 'unreachable' : 'offline';
+        transitionTo(nextStatus);
+      }
+    };
+
+    verificationTimer.current = setTimeout(runPing, 3000);
+  }, [transitionTo]);
+
+  const check = useCallback(async (isImmediateRetry = false) => {
     if (isCheckingRef.current) {
       return; // Prevent duplicate checks
     }
     isCheckingRef.current = true;
 
-    // Abort any active check
+    // Abort active check
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
-    // Retry loop for the active check
-    const maxAttempts = isInitialOrRetry ? 3 : 1;
-    let success = false;
-    let isOffline = false;
-
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      if (controller.signal.aborted) break;
-
-      // 1. Check physical internet state first
-      const online = await checkInternet();
-      if (!online) {
-        isOffline = true;
-        if (attempt < maxAttempts) {
-          await new Promise(r => setTimeout(r, 1000));
-          continue;
-        }
-        break;
-      }
-
-      // 2. Perform silent backend health ping
-      try {
-        const ok = await checkHealth(3000, 1, controller.signal);
-        if (ok) {
-          success = true;
-          break;
-        }
-      } catch (err) {
-        // silent fail for this attempt
-      }
-
-      if (attempt < maxAttempts) {
-        // sleep before retry
-        await new Promise(r => setTimeout(r, 1000));
-      }
+    // Clear verification timer on a fresh active check
+    if (verificationTimer.current) {
+      clearTimeout(verificationTimer.current);
+      verificationTimer.current = null;
     }
 
-    if (controller.signal.aborted) {
+    try {
+      console.log(`[Connection Debug] Silent backend health ping starting... (Immediate: ${isImmediateRetry})`);
+      const ok = await checkHealth(4000, 1, controller.signal);
+
+      if (controller.signal.aborted) {
+        isCheckingRef.current = false;
+        return;
+      }
+
+      if (ok) {
+        consecutiveFailures.current = 0;
+        transitionTo('online');
+      } else {
+        consecutiveFailures.current += 1;
+        console.warn(`[Connection Debug] Health check failed (streak=${consecutiveFailures.current})`);
+
+        // If we are already offline/unreachable/checking or user explicitly hit retry, apply change immediately
+        if (lastStatus.current !== 'online' || isImmediateRetry) {
+          const hasInternet = await checkInternet();
+          const nextStatus = hasInternet ? 'unreachable' : 'offline';
+          transitionTo(nextStatus);
+        } else {
+          // If we are currently online, enter delayed verification window (stabilization)
+          runVerificationLoop(controller.signal);
+        }
+      }
+    } catch (err) {
+      // silent fail
+    } finally {
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+      }
       isCheckingRef.current = false;
-      return;
     }
-
-    if (success) {
-      failStreak.current = 0;
-      if (lastStatus.current !== 'online') {
-        lastStatus.current = 'online';
-        statusRef.current  = 'online';
-        setServerStatus('online');
-        window.dispatchEvent(new CustomEvent('server-online'));
-      }
-    } else {
-      failStreak.current += 1;
-      
-      const shouldMarkDown = isInitialOrRetry || failStreak.current >= FAIL_THRESHOLD;
-      if (shouldMarkDown) {
-        const nextStatus = isOffline ? 'offline' : 'unreachable';
-        if (lastStatus.current !== nextStatus) {
-          lastStatus.current = nextStatus;
-          statusRef.current  = nextStatus;
-          setServerStatus(nextStatus);
-          window.dispatchEvent(new CustomEvent('server-offline'));
-        }
-      }
-    }
-
-    if (abortControllerRef.current === controller) {
-      abortControllerRef.current = null;
-    }
-    isCheckingRef.current = false;
-  }, []);
+  }, [transitionTo, runVerificationLoop]);
 
   const retryNow = useCallback(async () => {
+    console.log(`[Connection] Manual retry triggered.`);
     setServerStatus('checking');
     lastStatus.current = 'checking';
     statusRef.current  = 'checking';
+    consecutiveFailures.current = 0;
+    if (verificationTimer.current) {
+      clearTimeout(verificationTimer.current);
+      verificationTimer.current = null;
+    }
     await check(true);
   }, [check]);
 
@@ -137,21 +180,21 @@ export function ConnectionProvider({ children }) {
     const handleNetworkChange = () => {
       if (networkTimer) clearTimeout(networkTimer);
       networkTimer = setTimeout(() => {
-        retryNow();
-      }, 500); // Debounce network transitions
+        console.log(`[Connection] Browser network change detected. Verifying live health...`);
+        check();
+      }, 1000); // Debounce network event triggers
     };
 
     window.addEventListener('online', handleNetworkChange);
     window.addEventListener('offline', handleNetworkChange);
 
     const handleApiSuccess = () => {
-      failStreak.current = 0;
-      if (lastStatus.current === 'offline' || lastStatus.current === 'checking' || lastStatus.current === 'unreachable') {
-        lastStatus.current = 'online';
-        statusRef.current  = 'online';
-        setServerStatus('online');
-        window.dispatchEvent(new CustomEvent('server-online'));
+      consecutiveFailures.current = 0;
+      if (verificationTimer.current) {
+        clearTimeout(verificationTimer.current);
+        verificationTimer.current = null;
       }
+      transitionTo('online');
     };
 
     let apiFailureDebounce = null;
@@ -159,7 +202,7 @@ export function ConnectionProvider({ children }) {
       if (apiFailureDebounce) clearTimeout(apiFailureDebounce);
       apiFailureDebounce = setTimeout(() => {
         check();
-      }, 1000); // Debounce transient connection checks
+      }, 1500); // Debounce transient connection checks
     };
 
     window.addEventListener('api-call-success', handleApiSuccess);
@@ -175,11 +218,12 @@ export function ConnectionProvider({ children }) {
       window.removeEventListener('api-call-failure', handleApiFailure);
       if (networkTimer) clearTimeout(networkTimer);
       if (apiFailureDebounce) clearTimeout(apiFailureDebounce);
+      if (verificationTimer.current) clearTimeout(verificationTimer.current);
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
     };
-  }, [check, retryNow]);
+  }, [check, retryNow, transitionTo]);
 
   // UI stays responsive and behaves reachable during the 'checking' transition
   const isServerReachable = serverStatus === 'online' || serverStatus === 'checking';

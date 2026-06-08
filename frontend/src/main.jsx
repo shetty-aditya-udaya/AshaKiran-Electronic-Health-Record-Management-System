@@ -7,7 +7,7 @@ import { ConnectionProvider } from './context/ConnectionContext.jsx'
 import { SyncProvider } from './context/SyncContext.jsx'
 
 // Centralized Version-Clear mechanism to purge outdated SWs and stale caches automatically
-const APP_VERSION = '1.2';
+const APP_VERSION = '1.3';
 const storedVersion = localStorage.getItem('ashakiran_app_version');
 if (storedVersion !== APP_VERSION) {
   const currentLang = localStorage.getItem('lang') || 'en';

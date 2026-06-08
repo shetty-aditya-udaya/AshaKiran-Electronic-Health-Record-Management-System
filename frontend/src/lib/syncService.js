@@ -924,13 +924,6 @@ export function initAutoSync() {
   };
   scheduleNextHeartbeat();
 
-  _onlineHandler = () => {
-    log.info('browser online event → triggering immediate sync');
-    _failStreak = 0;
-    _wasOnline = true;
-    syncAll();
-  };
-
   _serverOnlineHandler = () => {
     log.info('server-online custom event → triggering immediate sync');
     _failStreak = 0;
@@ -946,9 +939,6 @@ export function initAutoSync() {
 
   _visitAddedHandler = () => { if (!_syncLock) syncAll(); };
   _patientAddedHandler = () => { if (!_syncLock) syncAll(); };
-
-  // Sync on browser network restore (belt & suspenders alongside heartbeat)
-  window.addEventListener('online', _onlineHandler);
 
   // Sync on ConnectionContext server online detection
   window.addEventListener('server-online', _serverOnlineHandler);
@@ -976,10 +966,6 @@ export function resetSyncEngine() {
     _heartbeatTimer = null;
   }
   
-  if (_onlineHandler) {
-    window.removeEventListener('online', _onlineHandler);
-    _onlineHandler = null;
-  }
   if (_serverOnlineHandler) {
     window.removeEventListener('server-online', _serverOnlineHandler);
     _serverOnlineHandler = null;

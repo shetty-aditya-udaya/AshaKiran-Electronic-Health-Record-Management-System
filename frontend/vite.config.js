@@ -24,9 +24,17 @@ export default defineConfig({
         skipWaiting: true,
         clientsClaim: true,
         cleanupOutdatedCaches: true,
-        cacheId: 'ashakiran-pwa-v1.2',
+        cacheId: 'ashakiran-pwa-v1.3',
         globPatterns: ['**/*.{js,css,html,ico,png,jpg,jpeg,svg,webmanifest}'],
         runtimeCaching: [
+          {
+            urlPattern: ({ url }) => {
+              const isAuth = url.pathname.includes('/login') || url.pathname.includes('/refresh') || url.pathname.includes('/register');
+              const isHealth = url.pathname.includes('/health');
+              return isAuth || isHealth;
+            },
+            handler: 'NetworkOnly'
+          },
           {
             urlPattern: ({ url }) => {
               const isApi = url.pathname.startsWith('/api/') || url.href.includes('/api/');
