@@ -54,53 +54,111 @@ console.error = (...args) => {
 
 // Centralized Version-Clear mechanism to purge outdated SWs and stale caches automatically
 const APP_VERSION = '1.3';
-const storedVersion = localStorage.getItem('ashakiran_app_version');
-if (storedVersion !== APP_VERSION) {
-  // Preserve crucial session and offline sync state to prevent forced logout and data sync loss
-  const token = localStorage.getItem('token');
-  const user = localStorage.getItem('user');
-  const currentLang = localStorage.getItem('lang') || 'en';
-  const tombstones = localStorage.getItem('ak_deleted_visit_ids');
-  const lastSyncPatients = localStorage.getItem('last_sync_patients');
-  const lastSyncRecords = localStorage.getItem('last_sync_records');
-  const lastSyncReminders = localStorage.getItem('last_sync_reminders');
+const FORCE_PURGE_KEY = 'ashakiran_force_sw_clear_v1.4';
 
-  localStorage.clear();
-  sessionStorage.clear();
-
-  if (token) localStorage.setItem('token', token);
-  if (user) localStorage.setItem('user', user);
-  localStorage.setItem('lang', currentLang);
-  if (tombstones) localStorage.setItem('ak_deleted_visit_ids', tombstones);
-  if (lastSyncPatients) localStorage.setItem('last_sync_patients', lastSyncPatients);
-  if (lastSyncRecords) localStorage.setItem('last_sync_records', lastSyncRecords);
-  if (lastSyncReminders) localStorage.setItem('last_sync_reminders', lastSyncReminders);
-
-  localStorage.setItem('ashakiran_app_version', APP_VERSION);
-
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.getRegistrations().then(registrations => {
-      for (const r of registrations) {
-        r.unregister().catch(() => {});
-      }
-    }).catch(() => {});
-  }
-
-  if (typeof caches !== 'undefined') {
-    caches.keys().then(keys => {
-      for (const key of keys) {
-        caches.delete(key).catch(() => {});
-      }
-    }).catch(() => {});
-  }
-
-  window.location.reload();
+let isStorageSupported = true;
+try {
+  const testKey = '__ak_storage_test__';
+  localStorage.setItem(testKey, testKey);
+  localStorage.removeItem(testKey);
+} catch (e) {
+  isStorageSupported = false;
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(
-  <ConnectionProvider>
-    <SyncProvider>
-      <App />
-    </SyncProvider>
-  </ConnectionProvider>
-)
+const storedVersion = isStorageSupported ? localStorage.getItem('ashakiran_app_version') : null;
+const needsPurge = isStorageSupported && ((storedVersion !== APP_VERSION) || !localStorage.getItem(FORCE_PURGE_KEY));
+
+if (needsPurge) {
+  try {
+    // Prevent infinite loops by setting the keys immediately
+    localStorage.setItem('ashakiran_app_version', APP_VERSION);
+    localStorage.setItem(FORCE_PURGE_KEY, 'true');
+  } catch (e) {}
+
+  // Inject a styled, professional updating interface during the async cleanup
+  const rootEl = document.getElementById('root');
+  if (rootEl) {
+    rootEl.innerHTML = `
+      <div style="display:flex;flex-direction:column;justify-content:center;align-items:center;height:100vh;background-color:#F8FAFC;color:#1a2e2e;font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Oxygen,Ubuntu,Cantarell,sans-serif;gap:1.5rem;padding:2rem;text-align:center;">
+        <div style="width:2.5rem;height:2.5rem;border:4px solid #e2e8f0;border-top-color:#0F766E;border-radius:50%;animation:ak-spin 1s linear infinite;"></div>
+        <div>
+          <h2 style="font-size:1.25rem;font-weight:600;color:#0F766E;margin:0 0 0.5rem 0;">Updating AshaKiran</h2>
+          <p style="font-size:0.95rem;color:#64748b;margin:0;max-width:320px;line-height:1.5;">Clearing stale system cache and service workers for a fresh update...</p>
+        </div>
+        <style>
+          @keyframes ak-spin {
+            to { transform: rotate(360deg); }
+          }
+        </style>
+      </div>
+    `;
+  }
+
+  (async () => {
+    try {
+      // Preserve crucial session and offline sync state to prevent forced logout and data sync loss
+      const token = isStorageSupported ? localStorage.getItem('token') : null;
+      const user = isStorageSupported ? localStorage.getItem('user') : null;
+      const currentLang = (isStorageSupported ? localStorage.getItem('lang') : null) || 'en';
+      const tombstones = isStorageSupported ? localStorage.getItem('ak_deleted_visit_ids') : null;
+      const lastSyncPatients = isStorageSupported ? localStorage.getItem('last_sync_patients') : null;
+      const lastSyncRecords = isStorageSupported ? localStorage.getItem('last_sync_records') : null;
+      const lastSyncReminders = isStorageSupported ? localStorage.getItem('last_sync_reminders') : null;
+
+      // 1. Unregister all existing service workers asynchronously
+      if ('serviceWorker' in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        if (registrations.length > 0) {
+          await Promise.all(registrations.map(registration => registration.unregister()));
+          console.log("Old service workers removed");
+        }
+      }
+
+      // 2. Clear old caches asynchronously
+      if (typeof caches !== 'undefined') {
+        const keys = await caches.keys();
+        if (keys.length > 0) {
+          await Promise.all(keys.map(key => caches.delete(key)));
+          console.log("Caches cleared successfully");
+        }
+      }
+
+      // 3. Purge storage
+      if (isStorageSupported) {
+        localStorage.clear();
+      }
+      try {
+        sessionStorage.clear();
+      } catch (e) {}
+
+      // Restore crucial session & offline sync state
+      if (isStorageSupported) {
+        localStorage.setItem('ashakiran_app_version', APP_VERSION);
+        localStorage.setItem(FORCE_PURGE_KEY, 'true');
+        if (token) localStorage.setItem('token', token);
+        if (user) localStorage.setItem('user', user);
+        localStorage.setItem('lang', currentLang);
+        if (tombstones) localStorage.setItem('ak_deleted_visit_ids', tombstones);
+        if (lastSyncPatients) localStorage.setItem('last_sync_patients', lastSyncPatients);
+        if (lastSyncRecords) localStorage.setItem('last_sync_records', lastSyncRecords);
+        if (lastSyncReminders) localStorage.setItem('last_sync_reminders', lastSyncReminders);
+      }
+
+      // Force fresh assets/API configuration loading by reloading the page
+      window.location.reload();
+    } catch (err) {
+      console.error("Failed to run cache/SW purge:", err);
+      window.location.reload();
+    }
+  })();
+}
+
+if (!needsPurge) {
+  ReactDOM.createRoot(document.getElementById('root')).render(
+    <ConnectionProvider>
+      <SyncProvider>
+        <App />
+      </SyncProvider>
+    </ConnectionProvider>
+  );
+}
