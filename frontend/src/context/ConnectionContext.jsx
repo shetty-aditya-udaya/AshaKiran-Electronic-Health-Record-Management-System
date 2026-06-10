@@ -131,13 +131,14 @@ export function ConnectionProvider({ children }) {
         consecutiveFailures.current += 1;
         console.warn(`[Connection Debug] Health check failed (streak=${consecutiveFailures.current})`);
 
-        // If we are already offline/unreachable/checking or user explicitly hit retry, apply change immediately
-        if (lastStatus.current !== 'online' || isImmediateRetry) {
+        // Shield UI from transient drops: only transition to offline/unreachable if we exceed threshold,
+        // or if it was an immediate manual retry request.
+        if (consecutiveFailures.current >= FAIL_THRESHOLD || isImmediateRetry) {
           const hasInternet = await checkInternet();
           const nextStatus = hasInternet ? 'unreachable' : 'offline';
           transitionTo(nextStatus);
         } else {
-          // If we are currently online, enter delayed verification window (stabilization)
+          // If we haven't hit the threshold, run the silent verification loop to confirm outage
           runVerificationLoop(controller.signal);
         }
       }

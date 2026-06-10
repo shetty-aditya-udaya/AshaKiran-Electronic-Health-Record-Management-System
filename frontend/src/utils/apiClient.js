@@ -61,16 +61,18 @@ export async function checkInternet() {
   if (typeof window === 'undefined') return true;
   try {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 3000);
-    await fetch(`/favicon.ico?_cb=${Date.now()}`, {
+    const timer = setTimeout(() => controller.abort(), 4000);
+    // Ping same-origin CDN asset to verify WAN connection
+    const res = await fetch(`/favicon.ico?_cb=${Date.now()}`, {
       method: 'HEAD',
       signal: controller.signal,
       cache: 'no-store',
     });
     clearTimeout(timer);
-    return true;
+    return res.ok;
   } catch (err) {
-    return typeof navigator !== 'undefined' ? navigator.onLine !== false : true;
+    // Avoid navigator.onLine completely for active determinations as it is highly unstable on mobile browsers
+    return false;
   }
 }
 
@@ -105,9 +107,9 @@ async function fetchWithTimeout(url, options = {}) {
     if (err.name === 'AbortError') {
       throw new TimeoutError();
     }
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-      throw new OfflineError();
-    }
+    // Do not throw OfflineError directly here. ConnectionContext handles structured
+    // verification (using active checkInternet pings) to avoid locking users offline
+    // due to transient browser navigator.onLine glitches.
     throw new BackendUnreachableError(err.message);
   } finally {
     clearTimeout(timer);

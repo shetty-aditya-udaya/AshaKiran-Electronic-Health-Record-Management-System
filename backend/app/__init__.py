@@ -218,23 +218,31 @@ def create_app():
     @app.after_request
     def log_request_response(response):
         duration = 0.0
-        if hasattr(request, 'start_time'):
-            duration = time.time() - request.start_time
-            REQUEST_LATENCY.labels(request.method, request.path).observe(duration)
-        REQUEST_COUNT.labels(request.method, request.path, response.status_code).observe(1)
+        # 1. Safely record Prometheus metrics
+        try:
+            if hasattr(request, 'start_time'):
+                duration = time.time() - request.start_time
+                REQUEST_LATENCY.labels(request.method, request.path).observe(duration)
+            REQUEST_COUNT.labels(request.method, request.path, response.status_code).inc()
+        except Exception as e:
+            # Prevent metrics recording crashes from impacting the response delivery
+            app.logger.error(f"METRICS ERROR: Failed to observe Prometheus metric: {e}")
 
-        # Output JSON structured log to stdout (exclude verbose metrics/health noise)
-        if request.path not in ["/metrics", "/health", "/"] and not request.path.startswith("/api/uploads"):
-            log_data = {
-                "event": "request_completed",
-                "ip": request.remote_addr,
-                "method": request.method,
-                "path": request.path,
-                "status": response.status_code,
-                "duration_sec": round(duration, 4),
-                "user_agent": request.headers.get("User-Agent", "unknown")
-            }
-            print(json.dumps(log_data), file=sys.stdout, flush=True)
+        # 2. Safely output JSON structured log to stdout (exclude verbose metrics/health noise)
+        try:
+            if request.path not in ["/metrics", "/health", "/"] and not request.path.startswith("/api/uploads"):
+                log_data = {
+                    "event": "request_completed",
+                    "ip": request.remote_addr,
+                    "method": request.method,
+                    "path": request.path,
+                    "status": response.status_code,
+                    "duration_sec": round(duration, 4),
+                    "user_agent": request.headers.get("User-Agent", "unknown")
+                }
+                print(json.dumps(log_data), file=sys.stdout, flush=True)
+        except Exception as e:
+            app.logger.error(f"LOGGING ERROR: Failed to print structured request log: {e}")
 
         return response
 
