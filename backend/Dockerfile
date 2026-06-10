@@ -31,11 +31,11 @@ RUN mkdir -p /app/instance /app/logs /app/uploads /app/uploads/profile_pics /app
 USER flaskuser
 
 # Expose Gunicorn port
-EXPOSE 5000
+EXPOSE 8080
 
 # Healthcheck leveraging Python's built-in urllib (keeps image slim and secure)
-HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD python -c "import urllib.request, os; port = os.environ.get('PORT', '8080'); urllib.request.urlopen(f'http://localhost:{port}/health')"
 
 # Run Flask backend via Gunicorn
 CMD ["gunicorn", "-c", "gunicorn.conf.py", "run:app"]

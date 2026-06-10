@@ -340,7 +340,7 @@ export const api = {
 
 // ── Health check ──────────────────────────────────────────────────────────────
 // Returns true ONLY on a proper 2xx response
-export async function checkHealth(timeoutMs = 3000, attempts = 1, externalSignal = null) {
+export async function checkHealth(timeoutMs = 8000, attempts = 1, externalSignal = null) {
   const url = `${API_BASE_URL}/health`;
   for (let i = 0; i < attempts; i++) {
     try {

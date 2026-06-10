@@ -101,6 +101,19 @@ def create_app():
         # Ensure database tables exist automatically
         db.create_all()
 
+        # Seed default clinician user (Priya Devi) automatically on startup if empty
+        try:
+            from app.models import User
+            import bcrypt
+            if not User.query.filter_by(email="priya@asha.in").first():
+                hashed = bcrypt.hashpw("password123".encode(), bcrypt.gensalt()).decode()
+                user = User(name="Priya Devi", email="priya@asha.in", password=hashed, village="Gopalpur")
+                db.session.add(user)
+                db.session.commit()
+                print("SEEDING: Default clinician user 'priya@asha.in' seeded successfully!")
+        except Exception as seed_err:
+            print(f"SEEDING WARNING: Failed to seed default user: {seed_err}")
+
         try:
             uri = app.config.get("SQLALCHEMY_DATABASE_URI", "")
             from sqlalchemy.engine.url import make_url
@@ -166,6 +179,7 @@ def create_app():
                 resp.headers["Access-Control-Allow-Origin"]      = origin if origin else "*"
                 resp.headers["Access-Control-Allow-Headers"]     = "Content-Type, Authorization"
                 resp.headers["Access-Control-Allow-Methods"]     = "GET, OPTIONS"
+                resp.headers["Access-Control-Allow-Max-Age"]     = "86400"
                 return resp
             if _is_allowed_origin(origin):
                 resp = make_response("", 204)
@@ -173,6 +187,7 @@ def create_app():
                 resp.headers["Access-Control-Allow-Credentials"] = "true"
                 resp.headers["Access-Control-Allow-Headers"]     = "Content-Type, Authorization"
                 resp.headers["Access-Control-Allow-Methods"]     = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+                resp.headers["Access-Control-Allow-Max-Age"]     = "86400"
                 return resp
 
     @app.after_request

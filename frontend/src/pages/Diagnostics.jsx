@@ -8,6 +8,7 @@ import {
   Trash2, ShieldAlert, Download, Terminal, ChevronRight, HelpCircle
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { API_BASE_URL } from '../config/api';
 
 export default function Diagnostics() {
   const { t } = useTranslation();
@@ -66,7 +67,7 @@ export default function Diagnostics() {
 
     // Ping API for latency and dynamic DB status
     const pingStart = Date.now();
-    fetch('/health')
+    fetch(`${API_BASE_URL || ''}/health`)
       .then(async res => {
         const duration = Date.now() - pingStart;
         setLatency(duration);

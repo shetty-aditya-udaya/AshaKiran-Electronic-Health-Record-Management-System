@@ -42,8 +42,9 @@ export function ConnectionProvider({ children }) {
     const now = Date.now();
     const duration = now - lastStatusChangeTime.current;
 
-    // Enforce minimum state duration, unless transitioning from initial 'checking' status
-    if (lastStatus.current !== 'checking' && duration < MIN_STATE_DURATION_MS) {
+    // Enforce minimum state duration only when transitioning to an offline/unreachable state (prevent flickering),
+    // but ALWAYS allow transitioning to 'online' immediately so the interface responds instantly.
+    if (nextStatus !== 'online' && lastStatus.current !== 'checking' && duration < MIN_STATE_DURATION_MS) {
       console.warn(`[Connection] Status transition blocked to prevent blinking: ${lastStatus.current} -> ${nextStatus} (${duration}ms < ${MIN_STATE_DURATION_MS}ms)`);
       return;
     }
@@ -71,7 +72,7 @@ export function ConnectionProvider({ children }) {
 
       console.log(`[Connection Debug] Verification ping ${attempts}/${maxAttempts} running...`);
       try {
-        const ok = await checkHealth(3000, 1, signal);
+        const ok = await checkHealth(6000, 1, signal);
         if (ok) {
           console.log(`[Connection Debug] Verification ping succeeded. Restoring status to online.`);
           consecutiveFailures.current = 0;
@@ -116,7 +117,7 @@ export function ConnectionProvider({ children }) {
 
     try {
       console.log(`[Connection Debug] Silent backend health ping starting... (Immediate: ${isImmediateRetry})`);
-      const ok = await checkHealth(4000, 1, controller.signal);
+      const ok = await checkHealth(8000, 1, controller.signal);
 
       if (controller.signal.aborted) {
         isCheckingRef.current = false;
