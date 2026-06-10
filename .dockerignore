@@ -1,0 +1,60 @@
+# Ignore Git directory
+.git/
+.gitignore
+
+# Ignore IDE configs
+.vscode/
+.idea/
+*.suo
+*.sln
+*.swp
+*.swo
+
+# Ignore Node.js build assets & modules
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+build/
+**/build/
+
+# Ignore Python dependencies & caches
+venv/
+.venv/
+env/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ignore Local Databases & Persistent Storages
+*.db
+*.sqlite
+*.sqlite3
+backend/instance/
+**/instance/
+
+# Ignore User Uploads, Temp Files & Logs
+backend/uploads/
+**/uploads/
+backend/logs/
+**/logs/
+backend/temp/
+**/temp/
+backend/exports/
+**/exports/
+backend/reports/
+**/reports/
+*.log
+
+# Ignore Documentation & Screenshots
+docs/
+screenshots/
+
+# Ignore Local Environment variables & Certificates (Security Hardening)
+.env
+.env.*
+docker.env
+*.pem
+*.key
+docker-compose.override.yml
