@@ -1,40 +1,88 @@
-# Root .gitignore for AshaKiran monorepo
+# ==============================================================================
+# AshaKiran Unified Monorepo .gitignore
+# ==============================================================================
 
-# Environment files — NEVER commit
+# ── 1. Environment & Credentials (NEVER COMMIT SECRETS) ────────────────────────
 .env
 .env.*
 !.env.example
-backend/.env
-frontend/.env
-frontend/.env.local
-frontend/.env.production
+docker.env
+*.env
+*.pem
+*.key
 
-# Node
+# ── 2. Frontend / Node.js ─────────────────────────────────────────────────────
 node_modules/
-frontend/node_modules/
-frontend/dist/
+**/node_modules/
+dist/
+**/dist/
+build/
+**/build/
+.svelte-kit/
+.next/
+.nuxt/
+out/
+.npm
+*.tsbuildinfo
 
-# Python
+# ── 3. Backend / Python ───────────────────────────────────────────────────────
 __pycache__/
-*.pyc
+**/__pycache__/
+*.py[cod]
+*$py.class
 *.pyo
+*.pyd
+.Python
+*.egg-info/
+.eggs/
+*.egg
 venv/
 .venv/
-backend/venv/
+env/
+**/venv/
+**/env/
+**/.venv/
 
-# Logs
-*.log
-backend/logs/
-backend/backend_error.log
-
-# SSL / certs
-# backend/ca.pem
-
-# Dev artifacts
+# ── 4. Databases & Persistent Storage ──────────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
 backend/instance/
-backend/uploads/
+**/instance/
+instance/
 
-# IDE
+# ── 5. User Uploads & Temporary Directories ───────────────────────────────────
+backend/uploads/
+**/uploads/
+temp/
+**/temp/
+exports/
+**/exports/
+
+# ── 6. System & IDE Configuration ─────────────────────────────────────────────
 .vscode/
 .idea/
-*.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ── 7. Logging & Diagnostics ──────────────────────────────────────────────────
+*.log
+logs/
+**/logs/
+backend/backend_error.log
+
+# ── 8. Test, Coverage & Build Caches ──────────────────────────────────────────
+.pytest_cache/
+**/ .pytest_cache/
+.coverage
+htmlcov/
+.buildx-cache/
+**/docker-cache/
