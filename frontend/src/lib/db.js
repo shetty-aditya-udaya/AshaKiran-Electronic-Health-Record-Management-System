@@ -133,6 +133,19 @@ export function getCurrentUserId() {
   } catch { return null; }
 }
 
+// Fallback UUID generator (RFC-4122) for insecure contexts (like HTTP on local IPs)
+export function generateUUID() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // PATIENTS
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -141,7 +154,7 @@ export async function savePatient(patient) {
   const uid = getCurrentUserId() || patient.userId || '';
   const record = {
     ...patient,
-    local_id:   patient.local_id || crypto.randomUUID(),
+    local_id:   patient.local_id || generateUUID(),
     userId:     uid,
     syncStatus: patient.syncStatus ?? SYNC.PENDING,
     updatedAt:  Date.now(),
@@ -295,7 +308,7 @@ export async function saveVisit(visit) {
   const uid = getCurrentUserId() || visit.userId || '';
   const record = {
     ...visit,
-    local_id:   visit.local_id || crypto.randomUUID(),
+    local_id:   visit.local_id || generateUUID(),
     userId:     uid,
     syncStatus: visit.syncStatus ?? SYNC.PENDING,
     updatedAt:  Date.now(),
@@ -421,7 +434,7 @@ export async function bulkUpsertVisits(visits) {
 
   for (const v of visits) {
     // ── Step 1: Try primary key (local_id / UUID) lookup ─────────────────────
-    const localId  = v.local_id || v.id?.toString() || crypto.randomUUID();
+    const localId  = v.local_id || v.id?.toString() || generateUUID();
     const existing = await db.visits.get(localId);
 
     if (existing) {
@@ -636,7 +649,7 @@ export async function saveReminder(reminder) {
   const uid = getCurrentUserId() || reminder.userId || '';
   const record = {
     ...reminder,
-    local_id:   reminder.local_id || crypto.randomUUID(),
+    local_id:   reminder.local_id || generateUUID(),
     userId:     uid,
     syncStatus: reminder.syncStatus ?? SYNC.SYNCED,
     updatedAt:  Date.now(),
@@ -1184,7 +1197,7 @@ export async function bulkUpsertReportFolders(serverPatients) {
 
     // Genuinely new — insert once
     const folder = {
-      local_id:       crypto.randomUUID(),
+      local_id:       generateUUID(),
       patientLocalId: serverLocalId || patientId,
       patientId,
       name:          sp.name,
@@ -1217,7 +1230,7 @@ export async function saveReportItem(report) {
   const uid = getCurrentUserId() || report.userId || '';
   const record = {
     ...report,
-    local_id:       report.local_id || crypto.randomUUID(),
+    local_id:       report.local_id || generateUUID(),
     patientId:      String(report.patientId || report.patient_id || ''),
     patientLocalId: String(report.patientLocalId || ''),
     userId:         uid,
@@ -1254,7 +1267,7 @@ export async function bulkUpsertReportItems(reports, patientId) {
   let changed = false;
   const records = [];
   for (const r of reports) {
-    const localId = r.local_id || r.id?.toString() || crypto.randomUUID();
+    const localId = r.local_id || r.id?.toString() || generateUUID();
     const existing = await db.reportItems.get(localId);
 
     if (existing) {

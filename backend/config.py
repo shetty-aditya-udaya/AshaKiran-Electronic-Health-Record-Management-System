@@ -13,6 +13,8 @@ class Config:
         # Standardize dialect mapping to mysql+pymysql for Railway compatibility
         if _db_url.startswith("mysql://"):
             _db_url = _db_url.replace("mysql://", "mysql+pymysql://", 1)
+        elif _db_url.startswith("postgres://"):
+            _db_url = _db_url.replace("postgres://", "postgresql://", 1)
         elif _db_url.startswith("sqlite:///"):
             # Ensure SQLite path is absolute (Step 4)
             db_file = _db_url.replace("sqlite:///", "")
@@ -43,19 +45,33 @@ class Config:
     SQLALCHEMY_DATABASE_URI = _db_url
     
     # Advanced Concurrency Connection Pooling Tuning (Optimised for Low-RAM Containers)
-    SQLALCHEMY_ENGINE_OPTIONS = {
-        "pool_size": 5,
-        "max_overflow": 5,
-        "pool_recycle": 900,       # Recycle connection every 15 min to prevent managed DB drops
-        "pool_timeout": 10,        # Safe timeout for low-RAM concurrency
-        "pool_pre_ping": True,     # Auto-verify connection before query execution
-        "connect_args": {
-            "ssl": {
-                "ca": _CA_PEM_PATH
-            },
-            "connect_timeout": 5
-        }
-    } if "mysql" in SQLALCHEMY_DATABASE_URI else {}
+    SQLALCHEMY_ENGINE_OPTIONS = {}
+    if SQLALCHEMY_DATABASE_URI:
+        if "mysql" in SQLALCHEMY_DATABASE_URI:
+            SQLALCHEMY_ENGINE_OPTIONS = {
+                "pool_size": 5,
+                "max_overflow": 5,
+                "pool_recycle": 900,       # Recycle connection every 15 min to prevent managed DB drops
+                "pool_timeout": 10,        # Safe timeout for low-RAM concurrency
+                "pool_pre_ping": True,     # Auto-verify connection before query execution
+                "connect_args": {
+                    "ssl": {
+                        "ca": _CA_PEM_PATH
+                    },
+                    "connect_timeout": 5
+                }
+            }
+        elif "postgres" in SQLALCHEMY_DATABASE_URI or "postgresql" in SQLALCHEMY_DATABASE_URI:
+            SQLALCHEMY_ENGINE_OPTIONS = {
+                "pool_size": 5,
+                "max_overflow": 5,
+                "pool_recycle": 900,
+                "pool_timeout": 10,
+                "pool_pre_ping": True,
+                "connect_args": {
+                    "connect_timeout": 5
+                }
+            }
     
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     _secret = os.getenv("SECRET_KEY")

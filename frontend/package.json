@@ -25,7 +25,8 @@
     "react-i18next": "^17.0.8",
     "react-leaflet": "4.2.1",
     "react-router-dom": "^6.16.0",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "@sentry/react": "^7.114.0"
   },
   "devDependencies": {
     "@types/react": "^18.2.15",

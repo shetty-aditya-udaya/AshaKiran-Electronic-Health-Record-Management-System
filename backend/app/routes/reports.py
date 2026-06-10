@@ -44,6 +44,7 @@ def get_report_patients(current_user):
         last_report = Report.query.filter_by(patient_id=p.id).order_by(Report.created_at.desc()).first()
         results.append({
             "id": p.id,
+            "local_id": p.local_id,
             "name": p.name,
             "category": p.category or ("Pregnancy" if p.is_pregnant else "General"),
             "health_status": p.health_status,
@@ -65,6 +66,7 @@ def get_patient_reports(current_user, patient_id):
     for r in reports:
         report_list.append({
             "id": r.id,
+            "local_id": r.local_id,
             "title": r.title,
             "type": r.report_type,
             "description": r.description,

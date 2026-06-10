@@ -13,7 +13,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Globe, ChevronDown, LogOut, User, X, Menu, CheckCircle2 } from 'lucide-react';
+import { Globe, ChevronDown, LogOut, User, X, Menu, CheckCircle2, Activity } from 'lucide-react';
 import ProfileRing from './ProfileRing';
 import BrandLogo from './BrandLogo';
 import { useProfileCompletion } from '../hooks/useProfileCompletion';
@@ -249,6 +249,13 @@ export default function Navbar({ user, handleLogout, avatar }) {
                   >
                     <User size={14} className="text-slate-400" />
                     {t('myProfile', 'My Profile')}
+                  </button>
+                  <button
+                    onClick={() => { setProfileOpen(false); navigate('/diagnostics'); }}
+                    className="w-full px-4 py-2.5 text-left flex items-center gap-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors"
+                  >
+                    <Activity size={14} className="text-slate-400" />
+                    {t('diagnostics', 'Diagnostics')}
                   </button>
                   <button
                     onClick={() => { setProfileOpen(false); handleLogout(); navigate('/'); }}

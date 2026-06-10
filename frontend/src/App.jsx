@@ -22,6 +22,8 @@ import CompleteVisit from './pages/CompleteVisit';
 import Profile from './pages/Profile';
 import ContactUs from './pages/ContactUs';
 import PrivacyPolicy from './pages/PrivacyPolicy';
+import ErrorBoundary from './components/ErrorBoundary';
+import Diagnostics from './pages/Diagnostics';
 
 // Programme Modules
 import MaternalHealth from './pages/modules/MaternalHealth';
@@ -135,21 +137,23 @@ export default function App() {
   };
 
   return (
-    <BrowserRouter>
-      <AppContent
-        lang={lang}
-        user={user}
-        t={t}
-        handleLangChange={handleLangChange}
-        handleLogin={handleLogin}
-        handleLogout={handleLogout}
-        handleProfileUpdate={handleProfileUpdate}
-        handleOpenAddVisit={handleOpenAddVisit}
-        handleCloseAddVisit={handleCloseAddVisit}
-        isAddVisitOpen={isAddVisitOpen}
-        addVisitPatientId={addVisitPatientId}
-      />
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <AppContent
+          lang={lang}
+          user={user}
+          t={t}
+          handleLangChange={handleLangChange}
+          handleLogin={handleLogin}
+          handleLogout={handleLogout}
+          handleProfileUpdate={handleProfileUpdate}
+          handleOpenAddVisit={handleOpenAddVisit}
+          handleCloseAddVisit={handleCloseAddVisit}
+          isAddVisitOpen={isAddVisitOpen}
+          addVisitPatientId={addVisitPatientId}
+        />
+      </BrowserRouter>
+    </ErrorBoundary>
   );
 }
 
@@ -206,6 +210,7 @@ function AppContent({
         <Route path="/reports" element={user ? <Reports t={t} /> : <Navigate to="/login" />} />
         <Route path="/reports/:id" element={user ? <PatientReportFolder t={t} /> : <Navigate to="/login" />} />
         <Route path="/profile" element={user ? <Profile onProfileUpdate={handleProfileUpdate} /> : <Navigate to="/login" />} />
+        <Route path="/diagnostics" element={user ? <Diagnostics /> : <Navigate to="/login" />} />
         
         <Route path="*" element={<Navigate to={user ? "/dashboard" : "/"} />} />
       </Routes>

@@ -1,11 +1,20 @@
 import os
 import logging
+import time
+import json
+import sys
+from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from flask import Flask, jsonify, request, make_response
 from flask_sqlalchemy import SQLAlchemy
 from config import Config
+from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 
 db = SQLAlchemy()
+
+# ── Prometheus Metrics ────────────────────────────────────────────────────────
+REQUEST_COUNT = Counter('flask_request_count', 'App Request Count', ['method', 'endpoint', 'http_status'])
+REQUEST_LATENCY = Histogram('flask_request_latency_seconds', 'Request latency', ['method', 'endpoint'])
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 _log_dir = os.path.join(os.path.dirname(__file__), '..', 'logs')
@@ -17,6 +26,12 @@ _handler.setLevel(logging.WARNING)
 _handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(name)s: %(message)s'))
 logging.getLogger().addHandler(_handler)
 log = logging.getLogger(__name__)
+
+# Add stdout stream handler for Docker log capture
+_stream_handler = logging.StreamHandler(sys.stdout)
+_stream_handler.setLevel(logging.WARNING)
+_stream_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(name)s: %(message)s'))
+logging.getLogger().addHandler(_stream_handler)
 
 # ── Allowed CORS origins ───────────────────────────────────────────────────────
 # In production, set ALLOWED_ORIGINS=https://yourdomain.com or CORS_ORIGINS=https://yourdomain.com
@@ -43,6 +58,22 @@ def _is_allowed_origin(origin: str) -> bool:
 
 
 def create_app():
+    # ── Sentry Exception Tracking Setup ──
+    sentry_dsn = os.getenv("SENTRY_DSN")
+    if sentry_dsn:
+        try:
+            import sentry_sdk
+            from sentry_sdk.integrations.flask import FlaskIntegration
+            sentry_sdk.init(
+                dsn=sentry_dsn,
+                integrations=[FlaskIntegration()],
+                traces_sample_rate=1.0,
+                profiles_sample_rate=1.0,
+            )
+            print("SENTRY MONITORING: Initialized successfully!")
+        except Exception as err:
+            print(f"SENTRY MONITORING ERROR: Failed to initialize Sentry! {err}", file=sys.stderr)
+
     app = Flask(__name__)
     app.config.from_object(Config)
 
@@ -159,13 +190,59 @@ def create_app():
         )
         return response
 
+    # ── Prometheus metrics scraping route ──
+    @app.route("/metrics")
+    def metrics_scrape():
+        return generate_latest(), 200, {'Content-Type': CONTENT_TYPE_LATEST}
+
+    # ── Request Timing & Structured JSON stdout logging middleware ──
+    @app.before_request
+    def start_timer():
+        request.start_time = time.time()
+
+    @app.after_request
+    def log_request_response(response):
+        duration = 0.0
+        if hasattr(request, 'start_time'):
+            duration = time.time() - request.start_time
+            REQUEST_LATENCY.labels(request.method, request.path).observe(duration)
+        REQUEST_COUNT.labels(request.method, request.path, response.status_code).observe(1)
+
+        # Output JSON structured log to stdout (exclude verbose metrics/health noise)
+        if request.path not in ["/metrics", "/health", "/"] and not request.path.startswith("/api/uploads"):
+            log_data = {
+                "event": "request_completed",
+                "ip": request.remote_addr,
+                "method": request.method,
+                "path": request.path,
+                "status": response.status_code,
+                "duration_sec": round(duration, 4),
+                "user_agent": request.headers.get("User-Agent", "unknown")
+            }
+            print(json.dumps(log_data), file=sys.stdout, flush=True)
+
+        return response
+
     # ── Health endpoint ──────────────────────────────────────────────────────
     @app.route("/")
     @app.route("/health")
     def health_check():
-        return jsonify({
-            "status": "healthy"
-        }), 200
+        health_status = {
+            "status": "healthy",
+            "database": "healthy",
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        status_code = 200
+        try:
+            # Active database health query
+            db.session.execute(db.text("SELECT 1"))
+        except Exception as err:
+            health_status["status"] = "unhealthy"
+            health_status["database"] = f"unreachable: {str(err)}"
+            status_code = 500
+            app.logger.error(f"HEALTH CHECK FAILURE: Database connection failed: {err}")
+
+        return jsonify(health_status), status_code
 
     # ── Global error handlers ────────────────────────────────────────────────
     @app.errorhandler(404)

@@ -3,10 +3,10 @@ import os
 # Gunicorn Production Configuration
 bind = f"0.0.0.0:{os.getenv('PORT', '5000')}"
 
-# Workers & Threads optimized for Railway Free/Starter Tier (Memory Safe)
-workers = 1
-threads = 2
-worker_class = "gthread"
+# Workers & Threads optimized for Production (Memory Safe, with env overrides)
+workers = int(os.getenv("GUNICORN_WORKERS", "1"))
+threads = int(os.getenv("GUNICORN_THREADS", "2"))
+worker_class = os.getenv("GUNICORN_WORKER_CLASS", "gthread")
 
 # Stable timeout for sync-heavy uploads (e.g. medical image attachments or massive offline queues)
 timeout = 120
