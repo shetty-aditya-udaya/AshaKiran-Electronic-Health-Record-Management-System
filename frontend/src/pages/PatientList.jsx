@@ -64,7 +64,7 @@ export default function PatientList({ onOpenAddVisit }) {
     updateText();
     const interval = setInterval(updateText, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [t]);
 
   // ── Offline-first data ─────────────────────────────────────────────────────
   const {

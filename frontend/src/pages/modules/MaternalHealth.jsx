@@ -3,9 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Baby, AlertTriangle, Calendar, RefreshCw, WifiOff } from 'lucide-react';
 import { api } from '../../utils/apiClient';
+import { useTranslation } from 'react-i18next';
 
-export default function MaternalHealth({ t }) {
+export default function MaternalHealth({ t: propT }) {
   const navigate = useNavigate();
+  const { t: i18nT } = useTranslation();
+  const t = propT || i18nT;
   const [patients, setPatients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -37,12 +40,12 @@ export default function MaternalHealth({ t }) {
       {/* Header — no + button */}
       <header className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-black text-slate-800">Maternal Health</h2>
-          <p className="text-sm text-slate-400 font-medium">ANC Tracking &amp; EDD</p>
+          <h2 className="text-2xl font-black text-slate-800">{t('maternalHealth', 'Maternal Health')}</h2>
+          <p className="text-sm text-slate-400 font-medium">{t('maternalHealthSub', 'ANC Tracking & EDD')}</p>
         </div>
         <button
           onClick={fetchPatients}
-          aria-label="Refresh maternal patients"
+          aria-label={t('refreshMaternalPatients', 'Refresh maternal patients')}
           className="p-3 bg-rose-50 text-rose-500 rounded-2xl hover:bg-rose-100 active:scale-95 transition-all"
         >
           <RefreshCw size={20} className={loading ? 'animate-spin' : ''} />
@@ -52,7 +55,7 @@ export default function MaternalHealth({ t }) {
       {/* States */}
       {loading ? (
         <div className="py-20 text-center animate-pulse text-slate-400 font-bold uppercase tracking-widest text-xs">
-          Loading Maternal Records…
+          {t('loadingMaternalRecords', 'Loading Maternal Records…')}
         </div>
       ) : error ? (
         <div className="p-10 text-center bg-white border border-slate-100 rounded-[2.5rem] space-y-3">
@@ -62,14 +65,14 @@ export default function MaternalHealth({ t }) {
             onClick={fetchPatients}
             className="mt-2 px-6 py-2 bg-rose-500 text-white text-xs font-black uppercase tracking-widest rounded-full"
           >
-            Retry
+            {t('retry', 'Retry')}
           </button>
         </div>
       ) : patients.length === 0 ? (
         <div className="p-10 text-center bg-white border border-slate-100 rounded-[2.5rem]">
           <Baby size={48} className="mx-auto text-slate-200 mb-4" />
           <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px]">
-            No active maternal records
+            {t('noActiveMaternalRecords', 'No active maternal records')}
           </p>
         </div>
       ) : (
@@ -86,7 +89,7 @@ export default function MaternalHealth({ t }) {
                 role="button"
                 tabIndex={0}
                 onKeyDown={(e) => e.key === 'Enter' && handlePatientClick(p)}
-                aria-label={`View records for ${p.name}`}
+                aria-label={`${t('viewRecordsFor', 'View records for')} ${p.name}`}
                 className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm flex items-center justify-between cursor-pointer hover:shadow-md hover:border-rose-100 transition-all active:scale-[0.98]"
               >
                 <div className="flex items-center gap-4">
@@ -97,11 +100,11 @@ export default function MaternalHealth({ t }) {
                     <h3 className="font-bold text-slate-800">{p.name}</h3>
                     <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-slate-400 mt-0.5">
                       <Calendar size={12} />
-                      EDD: {p.anc_edd || 'Not Set'}
+                      {t('eddColon', 'EDD:')} {p.anc_edd || t('notSet', 'Not Set')}
                     </div>
                     {p.weeks_pregnant && (
                       <p className="text-[10px] text-slate-400 mt-0.5">
-                        {p.weeks_pregnant} weeks pregnant
+                        {t('weeksPregnantVal', '{{count}} weeks pregnant', { count: p.weeks_pregnant })}
                       </p>
                     )}
                   </div>
@@ -109,7 +112,7 @@ export default function MaternalHealth({ t }) {
                 <div className="flex flex-col items-end gap-1">
                   {isHighRisk && (
                     <span className="px-3 py-1 bg-rose-500 text-white text-[10px] font-black uppercase tracking-tighter rounded-full shadow-lg shadow-rose-200">
-                      High Risk
+                      {t('highRisk', 'High Risk')}
                     </span>
                   )}
                   {p.village && (
@@ -124,3 +127,4 @@ export default function MaternalHealth({ t }) {
     </div>
   );
 }
+

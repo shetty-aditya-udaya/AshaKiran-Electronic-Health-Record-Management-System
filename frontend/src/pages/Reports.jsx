@@ -143,7 +143,7 @@ export default function Reports() {
     updateText();
     const interval = setInterval(updateText, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [t]);
 
   const [searchTerm, setSearchTerm]         = useState('');
   const [activeCategory, setActiveCategory] = useState('All');

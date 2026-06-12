@@ -121,7 +121,7 @@ function PendingCard({ r, navigate, t, onDeleteRequest }) {
           </span>
           <span className="flex items-center gap-1.5 font-medium text-slate-700">
             <span className="material-symbols-outlined text-base">calendar_today</span>
-            {formatDisplayDate(r.visit_date)} at {r.time}
+            {formatDisplayDate(r.visit_date)} {t('reminders.at', 'at')} {r.time}
           </span>
           {r.syncStatus === SYNC.PENDING && (
             <span className="flex items-center gap-1.5 text-amber-600 font-bold bg-amber-50 px-2 py-0.5 rounded-lg text-xs">
@@ -292,7 +292,7 @@ export default function Reminders() {
     updateText();
     const interval = setInterval(updateText, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [t]);
 
   const [activeTab, setActiveTab] = useState('pending');
   const [searchQuery, setSearchQuery] = useState('');

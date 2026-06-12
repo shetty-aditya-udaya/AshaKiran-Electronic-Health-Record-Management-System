@@ -90,6 +90,7 @@ function Sparkline({ data, color = '#14b8a6', width = 80, height = 28 }) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function DonutChart({ segments, size = 130, strokeWidth = 22, label, sublabel, isEmpty }) {
+  const { t } = useTranslation();
   const r     = (size - strokeWidth) / 2;
   const circ  = 2 * Math.PI * r;
   const cx = size / 2, cy = size / 2;
@@ -119,7 +120,7 @@ function DonutChart({ segments, size = 130, strokeWidth = 22, label, sublabel, i
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
         {isEmpty
-          ? <span className="text-[10px] text-slate-400 font-medium text-center px-2 leading-tight">{typeof window !== 'undefined' && window.__dashboardT ? window.__dashboardT('dashboard.noData') : 'No data'}</span>
+          ? <span className="text-[10px] text-slate-400 font-medium text-center px-2 leading-tight">{t('dashboard.noData', 'No data')}</span>
           : <>
               {label && <span className="text-xl font-bold text-slate-800 leading-none">{label}</span>}
               {sublabel && <span className="text-[10px] text-slate-400 font-medium mt-0.5">{sublabel}</span>}
@@ -135,6 +136,7 @@ function DonutChart({ segments, size = 130, strokeWidth = 22, label, sublabel, i
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function LineChart({ series, labels, width = 340, height = 160, empty }) {
+  const { t } = useTranslation();
   const padL = 32, padR = 12, padT = 12, padB = 28;
   const W = width - padL - padR;
   const H = height - padT - padB;
@@ -142,7 +144,7 @@ function LineChart({ series, labels, width = 340, height = 160, empty }) {
   if (empty) {
     return (
       <div className="flex items-center justify-center h-32 text-xs text-slate-400 font-medium">
-        {typeof window !== 'undefined' && window.__dashboardT ? window.__dashboardT('dashboard.noMonthlyData') : 'No monthly data available yet'}
+        {t('dashboard.noMonthlyData', 'No monthly data available yet')}
       </div>
     );
   }
@@ -464,9 +466,6 @@ export default function Dashboard() {
   const chartEmpty    = monthlyTrend.length === 0 || (patientsMonthly.every(v => v === 0) && visitsMonthly.every(v => v === 0));
 
   // Quick actions
-  // Store t in window so sub-components (DonutChart, LineChart) can access it
-  window.__dashboardT = t;
-
   const quickActions = [
     { icon: UserPlus,      label: t('dashboard.quickRegisterPatient'), color: '#0F766E', bg: '#EFF8F7', path: '/patients' },
     { icon: PlusCircle,    label: t('dashboard.quickAddVisit'),        color: '#2563EB', bg: '#EFF6FF', path: '/patients' },

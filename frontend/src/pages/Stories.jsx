@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 
 const CATEGORIES = ['All', 'ASHA Workers', 'Maternal Care', 'TB & Disease', 'Documentary', 'Field Life'];
 
@@ -87,6 +88,7 @@ const watchUrl = (id) => `https://www.youtube.com/watch?v=${id}`;
 // ----- Sub-components -----
 
 function VideoModal({ video, onClose }) {
+  const { t } = useTranslation();
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
@@ -102,14 +104,14 @@ function VideoModal({ video, onClose }) {
           <iframe
             className="absolute inset-0 w-full h-full"
             src={embedUrl(video.id)}
-            title={video.title}
+            title={t(`stories.video.${video.id}.title`, video.title)}
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
             allowFullScreen
             loading="lazy"
           />
         </div>
         <div className="mt-4 px-1">
-          <h3 className="text-white font-headline font-bold text-lg">{video.title}</h3>
+          <h3 className="text-white font-headline font-bold text-lg">{t(`stories.video.${video.id}.title`, video.title)}</h3>
           <p className="text-emerald-300/70 text-sm mt-1 flex items-center gap-1.5">
             <span className="material-symbols-outlined text-base">smart_display</span>
             {video.channel}
@@ -122,6 +124,7 @@ function VideoModal({ video, onClose }) {
 }
 
 function VideoCard({ video, index, onPlay }) {
+  const { t } = useTranslation();
   const [imgError, setImgError] = useState(false);
 
   return (
@@ -134,12 +137,12 @@ function VideoCard({ video, index, onPlay }) {
         {imgError ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-emerald-950/80">
             <span className="material-symbols-outlined text-4xl text-emerald-400/50 mb-2">play_disabled</span>
-            <p className="text-emerald-400/50 text-xs">Thumbnail unavailable</p>
+            <p className="text-emerald-400/50 text-xs">{t('stories.thumbnailUnavailable', 'Thumbnail unavailable')}</p>
           </div>
         ) : (
           <img
             src={thumb(video.id)}
-            alt={video.title}
+            alt={t(`stories.video.${video.id}.title`, video.title)}
             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
             onError={() => setImgError(true)}
             loading="lazy"
@@ -150,7 +153,7 @@ function VideoCard({ video, index, onPlay }) {
           <button
             onClick={() => onPlay(video)}
             className="w-14 h-14 rounded-full bg-white/20 backdrop-blur border border-white/30 flex items-center justify-center hover:bg-primary/80 transition-all"
-            aria-label="Play video"
+            aria-label={t('stories.playVideo', 'Play video')}
           >
             <span className="material-symbols-outlined text-white text-3xl" style={{ fontVariationSettings: "'FILL' 1" }}>play_arrow</span>
           </button>
@@ -163,7 +166,7 @@ function VideoCard({ video, index, onPlay }) {
           video.category === 'Field Life' ? 'bg-secondary/80 text-white' :
           'bg-emerald-900/80 text-white'
         }`}>
-          {video.category}
+          {t('stories.category.' + video.category.toLowerCase().replace(/\s+/g, '').replace('&', 'and'), video.category)}
         </span>
         {/* YouTube logo mark */}
         <span className="absolute bottom-3 right-3 opacity-80">
@@ -177,7 +180,7 @@ function VideoCard({ video, index, onPlay }) {
       {/* Body */}
       <div className="p-5 flex flex-col flex-1">
         <h3 className="font-headline font-bold text-on-surface text-base leading-snug mb-2 line-clamp-2 group-hover:text-primary transition-colors">
-          {video.title}
+          {t(`stories.video.${video.id}.title`, video.title)}
         </h3>
         <p className="text-on-surface-variant/70 text-xs flex items-center gap-1 mb-3">
           <span className="material-symbols-outlined text-sm">subscriptions</span>
@@ -186,12 +189,16 @@ function VideoCard({ video, index, onPlay }) {
             <span className="material-symbols-outlined text-secondary text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>verified</span>
           )}
         </p>
-        <p className="text-on-surface-variant text-sm leading-relaxed mb-4 flex-1 line-clamp-3">{video.desc}</p>
+        <p className="text-on-surface-variant text-sm leading-relaxed mb-4 flex-1 line-clamp-3">
+          {t(`stories.video.${video.id}.desc`, video.desc)}
+        </p>
 
         {/* Tags */}
         <div className="flex flex-wrap gap-1.5 mb-4">
           {video.tags.map(tag => (
-            <span key={tag} className="px-2 py-0.5 bg-surface-container-low rounded-full text-[10px] font-bold text-on-surface-variant">{tag}</span>
+            <span key={tag} className="px-2 py-0.5 bg-surface-container-low rounded-full text-[10px] font-bold text-on-surface-variant">
+              {t('stories.tag.' + tag.toLowerCase().replace(/\s+/g, '').replace('&', 'and'), tag)}
+            </span>
           ))}
         </div>
 
@@ -202,20 +209,20 @@ function VideoCard({ video, index, onPlay }) {
             className="flex-1 py-2.5 bg-primary/10 text-primary font-bold text-sm rounded-xl hover:bg-primary hover:text-on-primary transition-all flex items-center justify-center gap-2"
           >
             <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>play_circle</span>
-            Play Here
+            {t('stories.playHere', 'Play Here')}
           </button>
           <a
             href={watchUrl(video.id)}
             target="_blank"
             rel="noopener noreferrer"
             className="px-4 py-2.5 border border-outline-variant/30 text-on-surface-variant rounded-xl hover:bg-surface-container-high transition-all flex items-center gap-1.5 text-sm font-bold"
-            title="Watch on YouTube"
+            title={t('stories.watchOnYoutube', 'Watch on YouTube')}
           >
             <svg width="16" height="11" viewBox="0 0 20 14" fill="none" className="flex-shrink-0">
               <rect width="20" height="14" rx="3" fill="#FF0000"/>
               <polygon points="8,4 14,7 8,10" fill="white"/>
             </svg>
-            YouTube
+            {t('stories.youtubeLink', 'YouTube')}
           </a>
         </div>
       </div>
@@ -225,8 +232,10 @@ function VideoCard({ video, index, onPlay }) {
 
 // ----- Main Page -----
 
-export default function Stories({ t }) {
+export default function Stories({ t: propT }) {
   const navigate = useNavigate();
+  const { t: i18nT } = useTranslation();
+  const t = propT || i18nT;
   const [activeCategory, setActiveCategory] = useState('All');
   const [playingVideo, setPlayingVideo] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -260,10 +269,10 @@ export default function Stories({ t }) {
         <div className="absolute inset-0 bg-gradient-to-r from-emerald-950/50 via-transparent to-transparent pointer-events-none" />
         <div className="relative z-10 max-w-7xl mx-auto px-6 md:px-12 w-full text-left" style={{ animation: 'fadeUp 0.8s ease both 0.2s' }}>
           <h1 className="text-5xl sm:text-6xl md:text-8xl font-headline font-extrabold text-white leading-none tracking-tight mb-5 drop-shadow-md">
-            Stories of Care
+            {t('stories.heroTitle', 'Stories of Care')}
           </h1>
           <p className="text-lg sm:text-xl md:text-2xl text-emerald-50/90 max-w-2xl font-medium leading-relaxed drop-shadow">
-            Real narratives of courage, compassion, and transformation from India's rural health activists.
+            {t('stories.heroSub', "Real narratives of courage, compassion, and transformation from India's rural health activists.")}
           </p>
         </div>
       </section>
@@ -279,7 +288,7 @@ export default function Stories({ t }) {
                 <iframe
                   className="absolute inset-0 w-full h-full"
                   src={`https://www.youtube.com/embed/${FEATURED.id}?rel=0&modestbranding=1`}
-                  title={FEATURED.title}
+                  title={t(`stories.video.${FEATURED.id}.title`, FEATURED.title)}
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                   allowFullScreen
                   loading="lazy"
@@ -288,9 +297,15 @@ export default function Stories({ t }) {
             </div>
             {/* Info */}
             <div className="lg:col-span-2 py-2">
-              <span className="inline-block px-3 py-1 rounded-full bg-primary-container text-on-primary-container text-[10px] font-bold tracking-widest uppercase mb-4">Featured Story</span>
-              <h2 className="text-2xl md:text-3xl font-headline font-bold text-on-surface mb-4 leading-snug">{FEATURED.title}</h2>
-              <p className="text-on-surface-variant leading-relaxed mb-6">{FEATURED.desc}</p>
+              <span className="inline-block px-3 py-1 rounded-full bg-primary-container text-on-primary-container text-[10px] font-bold tracking-widest uppercase mb-4">
+                {t('stories.featuredStory', 'Featured Story')}
+              </span>
+              <h2 className="text-2xl md:text-3xl font-headline font-bold text-on-surface mb-4 leading-snug">
+                {t(`stories.video.${FEATURED.id}.title`, FEATURED.title)}
+              </h2>
+              <p className="text-on-surface-variant leading-relaxed mb-6">
+                {t(`stories.video.${FEATURED.id}.desc`, FEATURED.desc)}
+              </p>
               <div className="flex items-center gap-3 p-4 bg-surface-container-low rounded-xl mb-6">
                 <svg width="28" height="20" viewBox="0 0 20 14" fill="none"><rect width="20" height="14" rx="3" fill="#FF0000"/><polygon points="8,4 14,7 8,10" fill="white"/></svg>
                 <div>
@@ -298,12 +313,14 @@ export default function Stories({ t }) {
                     {FEATURED.channel}
                     <span className="material-symbols-outlined text-secondary text-base" style={{ fontVariationSettings: "'FILL' 1" }}>verified</span>
                   </p>
-                  <p className="text-xs text-on-surface-variant">Official Government & Verified Source</p>
+                  <p className="text-xs text-on-surface-variant">{t('stories.verifiedSource', 'Official Government & Verified Source')}</p>
                 </div>
               </div>
               <div className="flex flex-wrap gap-1.5 mb-6">
                 {FEATURED.tags.map(tag => (
-                  <span key={tag} className="px-3 py-1 bg-primary-container text-on-primary-container rounded-full text-xs font-bold">{tag}</span>
+                  <span key={tag} className="px-3 py-1 bg-primary-container text-on-primary-container rounded-full text-xs font-bold">
+                    {t('stories.tag.' + tag.toLowerCase().replace(/\s+/g, '').replace('&', 'and'), tag)}
+                  </span>
                 ))}
               </div>
               <a
@@ -313,7 +330,7 @@ export default function Stories({ t }) {
                 className="inline-flex items-center gap-2 px-6 py-3 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 transition-all shadow-md"
               >
                 <svg width="18" height="13" viewBox="0 0 20 14" fill="none"><rect width="20" height="14" rx="3" fill="white"/><polygon points="8,4 14,7 8,10" fill="#FF0000"/></svg>
-                Watch on YouTube
+                {t('stories.watchOnYoutube', 'Watch on YouTube')}
               </a>
             </div>
           </div>
@@ -326,7 +343,7 @@ export default function Stories({ t }) {
             <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline text-xl">search</span>
             <input
               type="text"
-              placeholder="Search stories, channels, tags…"
+              placeholder={t('stories.searchPlaceholder', 'Search stories, channels, tags…')}
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               className="w-full pl-12 pr-4 py-3 bg-surface-container-low border border-outline-variant/20 rounded-xl text-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/30"
@@ -344,7 +361,7 @@ export default function Stories({ t }) {
                     : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high'
                 }`}
               >
-                {cat}
+                {t('stories.category.' + cat.toLowerCase().replace(/\s+/g, '').replace('&', 'and'), cat)}
               </button>
             ))}
           </div>
@@ -353,17 +370,17 @@ export default function Stories({ t }) {
         {/* ── Attribution notice ── */}
         <div className="flex items-start gap-3 p-4 bg-surface-container-low border border-outline-variant/10 rounded-xl mb-8 text-sm text-on-surface-variant">
           <span className="material-symbols-outlined text-secondary text-xl shrink-0 mt-0.5">info</span>
-          <p>All videos are sourced from YouTube. Content belongs to respective creators. AshaKiran does not host or download any video content — all streams are played directly from YouTube.</p>
+          <p>{t('stories.attributionNotice', 'All videos are sourced from YouTube. Content belongs to respective creators. AshaKiran does not host or download any video content — all streams are played directly from YouTube.')}</p>
         </div>
 
         {/* ── Video Grid ── */}
         {filtered.length === 0 ? (
           <div className="py-32 text-center">
             <span className="material-symbols-outlined text-5xl text-outline mb-4 block">search_off</span>
-            <h3 className="font-bold text-xl text-on-surface mb-2">No stories found</h3>
-            <p className="text-on-surface-variant">Try a different search or category.</p>
+            <h3 className="font-bold text-xl text-on-surface mb-2">{t('stories.noStoriesFound', 'No stories found')}</h3>
+            <p className="text-on-surface-variant">{t('stories.noStoriesDesc', 'Try a different search or category.')}</p>
             <button onClick={() => { setSearchQuery(''); setActiveCategory('All'); }} className="mt-6 px-6 py-2.5 bg-primary text-on-primary rounded-full font-bold text-sm">
-              Reset Filters
+              {t('stories.resetFilters', 'Reset Filters')}
             </button>
           </div>
         ) : (
@@ -376,13 +393,13 @@ export default function Stories({ t }) {
 
         {/* ── Impact Stats ── */}
         <section className="mt-24 py-16 bg-gradient-to-br from-emerald-900 to-emerald-800 rounded-2xl px-8 text-center">
-          <h2 className="text-2xl font-headline font-bold text-white mb-12">Collective Impact</h2>
+          <h2 className="text-2xl font-headline font-bold text-white mb-12">{t('stories.collectiveImpact', 'Collective Impact')}</h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-10">
             {[
-              { value: '3.2M+', label: 'Patients Served' },
-              { value: '1,200+', label: 'Villages Covered' },
-              { value: '10k+', label: 'Workers Trained' },
-              { value: '12', label: 'States Reached' },
+              { value: '3.2M+', label: t('stories.patientsServed', 'Patients Served') },
+              { value: '1,200+', label: t('stories.villagesCovered', 'Villages Covered') },
+              { value: '10k+', label: t('stories.workersTrained', 'Workers Trained') },
+              { value: '12', label: t('stories.statesReached', 'States Reached') },
             ].map(({ value, label }) => (
               <div key={label}>
                 <span className="block text-4xl md:text-5xl font-headline font-extrabold text-primary-fixed mb-2">{value}</span>
@@ -397,21 +414,21 @@ export default function Stories({ t }) {
           <div className="bg-primary rounded-2xl p-10 flex flex-col justify-between gap-6">
             <div>
               <span className="material-symbols-outlined text-primary-fixed text-4xl mb-4 block" style={{ fontVariationSettings: "'FILL' 1" }}>volunteer_activism</span>
-              <h3 className="text-2xl font-headline font-bold text-on-primary mb-2">Join the Mission</h3>
-              <p className="text-on-primary/80 leading-relaxed">Become an ASHA worker or PHC partner and help extend care to the last mile.</p>
+              <h3 className="text-2xl font-headline font-bold text-on-primary mb-2">{t('stories.joinMission', 'Join the Mission')}</h3>
+              <p className="text-on-primary/80 leading-relaxed">{t('stories.joinMissionDesc', 'Become an ASHA worker or PHC partner and help extend care to the last mile.')}</p>
             </div>
             <button onClick={() => navigate('/signup')} className="self-start px-8 py-3 bg-white text-primary font-bold rounded-full hover:bg-primary-fixed transition-all shadow-md">
-              Get Started
+              {t('getStarted', 'Get Started')}
             </button>
           </div>
           <div className="bg-surface-container-low border border-outline-variant/10 rounded-2xl p-10 flex flex-col justify-between gap-6">
             <div>
               <span className="material-symbols-outlined text-primary text-4xl mb-4 block" style={{ fontVariationSettings: "'FILL' 1" }}>edit_note</span>
-              <h3 className="text-2xl font-headline font-bold text-on-surface mb-2">Share Your Story</h3>
-              <p className="text-on-surface-variant leading-relaxed">Are you a health worker with a story to tell? We'd love to feature your impact.</p>
+              <h3 className="text-2xl font-headline font-bold text-on-surface mb-2">{t('stories.shareStory', 'Share Your Story')}</h3>
+              <p className="text-on-surface-variant leading-relaxed">{t('stories.shareStoryDesc', "Are you a health worker with a story to tell? We'd love to feature your impact.")}</p>
             </div>
             <button className="self-start px-8 py-3 border-2 border-primary text-primary font-bold rounded-full hover:bg-primary hover:text-on-primary transition-all">
-              Submit Your Story
+              {t('stories.submitStory', 'Submit Your Story')}
             </button>
           </div>
         </section>
@@ -422,3 +439,4 @@ export default function Stories({ t }) {
     </div>
   );
 }
+
